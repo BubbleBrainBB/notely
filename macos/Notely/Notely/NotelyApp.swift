@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct NotelyApp: App {
+    @NSApplicationDelegateAdaptor(NotelyAppDelegate.self) private var appDelegate
     // Theme is global across all windows; the per-window data lives in WindowRoot.
     @State private var themeManager = ThemeManager.shared
 
@@ -19,7 +20,9 @@ struct NotelyApp: App {
                 .environment(themeManager)
                 .task { themeManager.applyAppearance() }
         }
-        .windowStyle(.hiddenTitleBar)
+        // A standard unified toolbar window, so macOS 26+ draws the native
+        // Liquid Glass toolbar and floating sidebar.
+        .windowToolbarStyle(.unified)
         .commands { AppCommands() }
     }
 }
@@ -34,17 +37,21 @@ struct WindowRoot: View {
 
     var body: some View {
         AppShellView()
+            .background(WindowCloseBehavior(store: store).frame(width: 0, height: 0))
             .environment(store)
             .environment(appModel)
             .environment(settingsTabState)
+            // One accent everywhere: Notely's own (Settings › Appearance),
+            // not the system accent the native controls would otherwise pick.
+            .tint(Color.accent)
             // Publish this window's store/model so menu commands act on the
             // focused window, not a shared global.
             .focusedSceneValue(\.noteStore, store)
             .focusedSceneValue(\.appModel, appModel)
-            // Rebuild the shell (not the store) when the theme/accent changes so
-            // theme-driven Color tokens are re-read everywhere. The @State above
+            // Rebuild the shell (not the store) when the accent changes so the
+            // accent-driven Color tokens are re-read everywhere. The @State above
             // lives on WindowRoot, which keeps its identity, so the open folder
-            // and notes survive a theme switch.
+            // and notes survive an accent switch.
             .id(themeManager.renderKey)
     }
 }
@@ -76,9 +83,7 @@ struct AppCommands: Commands {
         CommandGroup(after: .newItem) {
             Button("New Note") {
                 guard let store, let appModel else { return }
-                let note = store.createNote()
-                appModel.selectedNoteId = note?.id
-                appModel.sidebarSelection = .allNotes
+                appModel.openNote(store.createNote()?.id)
             }
             .keyboardShortcut("n", modifiers: .command)
 
@@ -91,6 +96,18 @@ struct AppCommands: Commands {
                 openFolderInFocusedWindow()
             }
             .keyboardShortcut("o", modifiers: .command)
+        }
+
+        CommandGroup(replacing: .sidebar) {
+            Button("Toggle Sidebar") { appModel?.toggleSidebar() }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+            Button("Search Notes") {
+                guard let appModel else { return }
+                if !appModel.isSidebarVisible { appModel.toggleSidebar() }
+                NotificationCenter.default.post(name: .focusNoteSearch, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            Divider()
         }
 
         CommandMenu("Format") {
@@ -111,19 +128,10 @@ struct AppCommands: Commands {
     /// Opens a folder in the currently focused window (replacing its workspace).
     /// If no window is focused, opens a new window for the chosen folder instead.
     private func openFolderInFocusedWindow() {
-        let panel = NSOpenPanel()
-        panel.title = "Open Notes Folder"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open"
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = NotesFolderPanel.choose() else { return }
         if let store, let appModel {
             store.openWorkspace(at: url)
-            appModel.selectedNoteId = nil
-            appModel.sidebarSelection = .allNotes
+            appModel.openNote(nil)
         } else {
             openWindow(id: "main")
         }

@@ -23,7 +23,10 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
     private var currentFrameIndex = 0
     private var animationTimer: Timer?
 
-    init(content: LoadedMarkdownImage, markdownSource: String, maxWidth: CGFloat = 500) {
+    static let cornerRadius: CGFloat = 8
+    static let captionHeight: CGFloat = 26
+
+    init(content: LoadedMarkdownImage, markdownSource: String, caption: String = "", maxWidth: CGFloat = 680) {
         self.markdownSource = markdownSource
         // Images are already downsampled at decode time (off the main thread via
         // ImageIO), so attachment creation only computes display bounds — no
@@ -36,8 +39,33 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
             bounds = NSRect(origin: .zero, size: Self.displaySize(for: frames.first?.image.size ?? .zero, maxWidth: maxWidth))
             startAnimation()
         } else {
-            image = content.image
-            bounds = NSRect(origin: .zero, size: Self.displaySize(for: content.image.size, maxWidth: maxWidth))
+            // Static images are wrapped in a lazily drawn image that clips to
+            // rounded corners and draws the alt text underneath as a caption.
+            let size = Self.displaySize(for: content.image.size, maxWidth: maxWidth)
+            let caption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let source = content.image
+            let total = NSSize(width: size.width, height: size.height + (caption.isEmpty ? 0 : Self.captionHeight))
+            image = NSImage(size: total, flipped: true) { _ in
+                let imageRect = NSRect(origin: .zero, size: size)
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(roundedRect: imageRect, xRadius: Self.cornerRadius, yRadius: Self.cornerRadius).addClip()
+                source.draw(in: imageRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                NSGraphicsContext.restoreGraphicsState()
+                if !caption.isEmpty {
+                    let para = NSMutableParagraphStyle()
+                    para.alignment = .center
+                    para.lineBreakMode = .byTruncatingTail
+                    (caption as NSString).draw(
+                        in: NSRect(x: 0, y: size.height + 7, width: size.width, height: Self.captionHeight - 7),
+                        withAttributes: [
+                            .font: NSFont.systemFont(ofSize: 12.5),
+                            .foregroundColor: MarkdownPalette.tertiary,
+                            .paragraphStyle: para,
+                        ])
+                }
+                return true
+            }
+            bounds = NSRect(origin: .zero, size: total)
         }
     }
 
@@ -126,6 +154,45 @@ final class ImageLoader {
 
     func setWorkspaceURL(_ url: URL?) {
         workspaceURL = url
+        embedIndex = nil
+    }
+
+    // MARK: - Obsidian embeds
+
+    /// File name (lowercased) → file in the workspace, for `![[name]]` embeds.
+    /// Built lazily on the first embed and dropped when the workspace changes.
+    private var embedIndex: [String: URL]?
+
+    /// Resolves an Obsidian-style embed target (`![[clip.mp4]]`,
+    /// `![[img.gif|300]]`, `![[sub/a.png]]`) to a local file: first as a path
+    /// relative to the note or workspace, then by file name anywhere in the
+    /// workspace, the way Obsidian finds attachments.
+    func resolveEmbed(_ target: String) -> URL? {
+        var name = target
+        if let cut = name.firstIndex(where: { $0 == "|" || $0 == "#" }) { name = String(name[..<cut]) }
+        name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+
+        let direct = resolveLocalPath(name)
+        if FileManager.default.fileExists(atPath: direct.path) { return direct }
+
+        if embedIndex == nil { embedIndex = buildEmbedIndex() }
+        return embedIndex?[(name as NSString).lastPathComponent.lowercased()]
+    }
+
+    private func buildEmbedIndex() -> [String: URL] {
+        guard let workspaceURL,
+              let enumerator = FileManager.default.enumerator(
+                at: workspaceURL, includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { return [:] }
+        var index: [String: URL] = [:]
+        for case let url as URL in enumerator where url.pathExtension.lowercased() != "md" {
+            let key = url.lastPathComponent.lowercased()
+            // Prefer the shallowest match, like Obsidian's shortest-path rule.
+            if let existing = index[key], existing.pathComponents.count <= url.pathComponents.count { continue }
+            index[key] = url
+        }
+        return index
     }
 
     func setBaseURL(_ url: URL?) {

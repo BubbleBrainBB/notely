@@ -21,34 +21,46 @@ struct EditorContainerView: View {
 
 /// Shown when no note is selected.
 struct EmptyEditorView: View {
+    @Environment(AppModel.self) var appModel
+    @Environment(FileNoteStore.self) var store
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-            }
-            .frame(height: 40)
+            VStack(spacing: 16) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundColor(.iconMuted)
+                    .frame(width: 56, height: 56)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.sidebarBg))
 
-            VStack(spacing: 18) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.accent.opacity(0.08))
-                        .frame(width: 84, height: 84)
-                    Image(systemName: "note.text.badge.plus")
-                        .font(.system(size: 34, weight: .light))
-                        .foregroundColor(.accent)
-                }
-
-                VStack(spacing: 6) {
-                    Text("Select a note or create a new one")
-                        .font(.notely(17, weight: .semibold))
+                VStack(spacing: 4) {
+                    Text("No note open")
+                        .font(.notely(15, weight: .semibold))
                         .foregroundColor(.primaryText)
-                    Text("Your calm writing space will appear here.")
+                    Text("Pick one from the sidebar, or start a new one.")
                         .font(.notely(13))
                         .foregroundColor(.tertiaryText)
                 }
+
+                Button {
+                    appModel.openNote(store.createNote()?.id)
+                } label: {
+                    Text("New Note")
+                        .font(.notely(13, weight: .medium))
+                        .foregroundColor(.primaryText)
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.surface))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(Color.controlBorder, lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color.editorBg)
+        .modifier(NoteToolbar())
     }
 }

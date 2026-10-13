@@ -5,6 +5,8 @@ struct AppShellView: View {
     @Environment(FileNoteStore.self) var store
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
 
+    static let sidebarWidth: CGFloat = 240
+
     /// Minimum width for the editor detail column: the capped text column plus
     /// its side insets. Enforced as the detail column's min and folded into the
     /// window min width so the text column never reflows when the sidebar
@@ -14,29 +16,51 @@ struct AppShellView: View {
     }
 
     var body: some View {
+        @Bindable var appModel = appModel
         if !store.isOpen {
             FolderOpenView()
         } else {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $appModel.columnVisibility) {
                 SidebarView()
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 220, max: 220)
-            } content: {
-                if appModel.showSettings {
-                    SettingsTabBar()
-                } else {
-                    NoteListView()
-                }
+                    // Draggable from the icon rail (64) to 420; opens at 240.
+                    // Snapping and tiers: SidebarWidthPolicy / SidebarSplitHook.
+                    // The minimum sits a little under the rail: positioning the
+                    // divider exactly at the minimum makes the split view collapse.
+                    .navigationSplitViewColumnWidth(min: SidebarWidthPolicy.rail - 8, ideal: Self.sidebarWidth,
+                                                    max: SidebarWidthPolicy.max)
+                    // Any toolbar item beside the traffic lights (the system
+                    // toggle, or one at the detail's leading edge) puts a
+                    // ~140pt floor under the column, so the 64pt rail couldn't
+                    // exist. While the sidebar shows, its hide button lives in
+                    // the sidebar itself; the toolbar gets one only when collapsed.
+                    .toolbar(removing: .sidebarToggle)
             } detail: {
-                if appModel.showSettings {
-                    SettingsContent()
-                } else {
-                    EditorContainerView()
-                        .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
+                Group {
+                    if appModel.showSettings {
+                        HStack(spacing: 0) {
+                            SettingsTabBar()
+                            Rectangle().fill(Color.borderColor).frame(width: 1)
+                            SettingsContent()
+                        }
+                        .navigationTitle("Settings")
+                    } else {
+                        // Extends under the toolbar so text scrolls beneath its
+                        // glass; the scroll view insets its content to match.
+                        EditorContainerView()
+                            .ignoresSafeArea(.container, edges: .top)
+                    }
+                }
+                .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
+                .toolbar {
+                    // Collapsed: the way back sits beside the traffic lights.
+                    if !appModel.isSidebarVisible {
+                        ToolbarItem(placement: .navigation) { SidebarToggleButton() }
+                    }
                 }
             }
             .navigationSplitViewStyle(.balanced)
-            .frame(minWidth: CGFloat(220) + 300 + detailMinWidth, minHeight: 700)
-            .background(Color.appBg)
+            .frame(minWidth: Self.sidebarWidth + detailMinWidth, minHeight: 600)
+
         }
     }
 }

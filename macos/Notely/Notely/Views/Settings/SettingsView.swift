@@ -8,7 +8,7 @@ final class SettingsTabState {
     var selectedTab: SettingsTab = .general
 }
 
-// MARK: - Middle column: Settings tab list
+// MARK: - Settings tab list (left of the settings content)
 
 struct SettingsTabBar: View {
     @Environment(SettingsTabState.self) var state
@@ -36,12 +36,12 @@ struct SettingsTabBar: View {
 
             Spacer()
         }
-        .background(Color.noteListBg)
-        .navigationSplitViewColumnWidth(min: 240, ideal: 240, max: 240)
+        .frame(width: 220)
+        .background(Color.editorBg)
     }
 }
 
-// MARK: - Right column: Settings content
+// MARK: - Settings content
 
 struct SettingsContent: View {
     @Environment(SettingsTabState.self) var state
@@ -329,65 +329,6 @@ struct ChipButton<Label: View>: View {
     }
 }
 
-// MARK: - Theme preview card (Appearance)
-
-struct ThemeCard: View {
-    let name: String
-    let surface: Color
-    let accent: Color
-    let titleColor: Color
-    let lineColor: Color
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Mini document preview
-            VStack(alignment: .leading, spacing: 7) {
-                RoundedRectangle(cornerRadius: 2).fill(titleColor).frame(width: 54, height: 8)
-                RoundedRectangle(cornerRadius: 3).fill(accent).frame(width: 26, height: 7)
-                RoundedRectangle(cornerRadius: 2).fill(lineColor).frame(height: 5)
-                HStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 2).fill(lineColor).frame(height: 5)
-                    Color.clear.frame(width: 30, height: 5)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(13)
-            .frame(height: 86, alignment: .top)
-            .background(surface)
-
-            Rectangle().fill(Color.primaryText.opacity(0.06)).frame(height: 1)
-
-            HStack(spacing: 0) {
-                Text(name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primaryText)
-                Spacer(minLength: 0)
-                ZStack {
-                    if isSelected {
-                        Circle().fill(Color.accent)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                }
-                .frame(width: 16, height: 16)
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 9)
-        }
-        .background(Color.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(isSelected ? Color.accent : Color.primaryText.opacity(0.08), lineWidth: 2)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
-    }
-}
-
 // MARK: - Keyboard shortcut chips (Shortcuts)
 
 struct Keycap: View {
@@ -610,54 +551,16 @@ struct AppearanceSettings: View {
     @State private var lineSpacing: String = LineSpacingPreset.from(multiplier: AppSettings.editorLineHeight).rawValue
 
     private let accentColors: [(name: String, hex: String)] = [
-        ("Amber", "#D97706"),
-        ("Teal", "#2D7D7D"),
-        ("Forest", "#5A7A44"),
-        ("Mint", "#98FB98"),
-        ("Coral", "#FF385C"),
+        ("Blue", "#1D6FC2"),
+        ("Ink", "#37352F"),
+        ("Green", "#448361"),
+        ("Purple", "#9065B0"),
+        ("Red", "#C4402F"),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsHeader(title: "Appearance", subtitle: "Personalize how your notes look.")
-
-            // Theme picker
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Theme")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.primaryText)
-                    Text("Choose a preset look for the editor.")
-                        .font(.system(size: 13))
-                        .foregroundColor(.tertiaryText)
-                }
-
-                HStack(spacing: 12) {
-                    ThemeCard(name: "Paper",
-                              surface: Color.fromHex("#FBF8F3"), accent: Color.fromHex("#D97706"),
-                              titleColor: Color.fromHex("#2B2B2B"), lineColor: Color.black.opacity(0.10),
-                              isSelected: themeManager.theme == .paper) { themeManager.select(.paper) }
-                        .frame(maxWidth: .infinity)
-                    ThemeCard(name: "Mineral",
-                              surface: Color.fromHex("#FFFFFF"), accent: Color.fromHex("#2D7D7D"),
-                              titleColor: Color.fromHex("#1A1A1A"), lineColor: Color.black.opacity(0.08),
-                              isSelected: themeManager.theme == .mineral) { themeManager.select(.mineral) }
-                        .frame(maxWidth: .infinity)
-                    ThemeCard(name: "Bookish",
-                              surface: Color.fromHex("#1C1B19"), accent: Color.fromHex("#F59E0B"),
-                              titleColor: Color.fromHex("#F5EFE6"), lineColor: Color.white.opacity(0.13),
-                              isSelected: themeManager.theme == .bookish) { themeManager.select(.bookish) }
-                        .frame(maxWidth: .infinity)
-                    ThemeCard(name: "Inky",
-                              surface: Color.fromHex("#000000"), accent: Color.fromHex("#98FB98"),
-                              titleColor: Color.fromHex("#F2F2F2"), lineColor: Color.white.opacity(0.12),
-                              isSelected: themeManager.theme == .inky) { themeManager.select(.inky) }
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.bottom, 12)
-
-            SettingsDivider()
 
             SettingsRow(title: "Accent Color", subtitle: "Highlight color for selections and links.") {
                 HStack(spacing: 8) {

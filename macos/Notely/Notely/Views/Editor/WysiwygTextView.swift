@@ -1,4 +1,5 @@
 import AppKit
+import AVKit
 import SwiftUI
 
 /// Simple file-based diagnostics.
@@ -157,6 +158,7 @@ struct WysiwygEditor: NSViewRepresentable {
         // Keep the caret colored by the live theme accent (it can change at
         // runtime via Settings without the text view being recreated).
         textView.insertionPointColor = NSColor(Color.accent)
+        textView.selectedTextAttributes = [.backgroundColor: NSColor(Color.accent).withAlphaComponent(0.18)]
         textView.rebuildEngineAndRestyleIfNeeded()
         textView.fitFrameToContent()
     }
@@ -178,8 +180,8 @@ struct WysiwygEditor: NSViewRepresentable {
 
 /// The WYSIWYG-capable NSTextView subclass.
 final class WysiwygTextView: NSTextView {
-    var fontSize: CGFloat = 17
-    var lineHeight: CGFloat = 1.7
+    var fontSize: CGFloat = 16
+    var lineHeight: CGFloat = 1.75
     var fontName: String = "System"
     var onTextChange: ((String) -> Void)?
     private var engine: WysiwygEngine?
@@ -215,7 +217,7 @@ final class WysiwygTextView: NSTextView {
         switch setting {
         case "narrow": return 600
         case "wide": return 860
-        default: return 720
+        default: return 680
         }
     }
 
@@ -259,7 +261,9 @@ final class WysiwygTextView: NSTextView {
         backgroundColor = .clear
         insertionPointColor = NSColor(Color.accent)
         autoresizingMask = [.width]
-        textContainerInset = NSSize(width: 0, height: 8)
+        // Top/bottom breathing room for the text column; the scroll view adds
+        // the toolbar's height on top when it extends under it.
+        textContainerInset = NSSize(width: 0, height: 30)
         textContainer?.widthTracksTextView = true
         textContainer?.containerSize = NSSize(width: max(bounds.width, 1), height: CGFloat.greatestFiniteMagnitude)
         textContainer?.lineFragmentPadding = 0
@@ -398,6 +402,29 @@ final class WysiwygTextView: NSTextView {
         scrollToVisible(revealRect)
     }
 
+    /// The caret takes its height from the neighboring character's font,
+    /// which is tiny next to collapsed Markdown syntax. Never draw it shorter
+    /// than a body line.
+    override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
+        var rect = rect
+        let minHeight = ceil(fontSize * 1.25)
+        if rect.height < minHeight {
+            rect.origin.y = rect.maxY - minHeight
+            rect.size.height = minHeight
+        }
+        super.drawInsertionPoint(in: rect, color: color, turnedOn: flag)
+    }
+
+    override func setNeedsDisplay(_ invalidRect: NSRect, avoidAdditionalLayout flag: Bool) {
+        // Widen caret invalidation to match the taller caret drawn above, so
+        // blinking off erases all of it.
+        var rect = invalidRect
+        if rect.width <= 3 {
+            rect = rect.insetBy(dx: 0, dy: -fontSize)
+        }
+        super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
+    }
+
     // MARK: - First responder
 
     override var acceptsFirstResponder: Bool { true }
@@ -474,6 +501,13 @@ final class WysiwygTextView: NSTextView {
         restyleCount += 1
         defer { isRestyling = false }
 
+        // Restyling briefly expands every image / video / table attachment
+        // back to its (much shorter) Markdown source, which shrinks the
+        // document and lets the clip view clamp the scroll offset. Remember
+        // where the reader was and put them back afterwards.
+        let clipView = enclosingScrollView?.contentView
+        let savedScrollOrigin = clipView?.bounds.origin
+
         // Map the caret into raw-markdown coordinates BEFORE collapsing/expanding
         // attachments, so it survives the coordinate change (image syntax ↔
         // attachment, table source ↔ grid).
@@ -505,12 +539,29 @@ final class WysiwygTextView: NSTextView {
 
         let contentWidth = max(120, (textContainer?.size.width ?? bounds.width))
         engine?.applyStyle(to: storage, cursorLocation: clampedRaw,
-                           activeTableIndex: activeTableIndex, maxTableWidth: contentWidth,
-                           activeMathIndex: activeMathIndex, maxMathWidth: contentWidth)
+                           activeTableIndex: activeTableIndex, activeMathIndex: activeMathIndex,
+                           maxWidth: contentWidth)
 
         // Map the caret back into the (re-collapsed) display coordinates.
         let displayCursor = displayLocation(forRawLocation: clampedRaw)
         setSelectedRange(NSRange(location: min(displayCursor, storage.length), length: 0))
+
+        if let clipView, let savedScrollOrigin {
+            fitFrameToContent()
+            if clipView.bounds.origin != savedScrollOrigin {
+                clipView.setBoundsOrigin(clipView.constrainBoundsRect(
+                    NSRect(origin: savedScrollOrigin, size: clipView.bounds.size)).origin)
+                enclosingScrollView?.reflectScrolledClipView(clipView)
+            }
+        }
+
+        repositionVideoPlayers()
+
+        // Text typed next inherits the attributes before the caret; if that is
+        // collapsed syntax (a 0.1pt font), fall back to the body style.
+        if let font = typingAttributes[.font] as? NSFont, font.pointSize < 1 {
+            typingAttributes = WysiwygEngine.makeStyle(fontSize: fontSize, lineHeight: lineHeight, fontName: fontName).baseParagraph
+        }
     }
 
     @objc private func handleImageDidLoad() {
@@ -603,6 +654,8 @@ final class WysiwygTextView: NSTextView {
         if let window = window, window.firstResponder != self {
             window.makeFirstResponder(self)
         }
+        if toggleTaskIfCheckboxClicked(event) { return }
+        if playVideoIfClicked(event) { return }
         super.mouseDown(with: event)
         // A simple click (no drag-selection): re-render so the table the caret
         // landed in opens as editable source, and the one it left re-renders as a
@@ -611,6 +664,105 @@ final class WysiwygTextView: NSTextView {
         // remap in restyle().
         if selectedRange().length == 0 {
             restyle()
+        }
+    }
+
+    /// To-do checkboxes are drawn in the list indent (the `[ ]` syntax is
+    /// collapsed), so a click on one is handled here: it flips `[ ]` ↔ `[x]`
+    /// on that line instead of placing the caret.
+    private func toggleTaskIfCheckboxClicked(_ event: NSEvent) -> Bool {
+        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        let containerPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        let charIndex = min(layoutManager.characterIndexForGlyph(at: glyphIndex), storage.length - 1)
+        let string = storage.string as NSString
+        let lineRange = string.lineRange(for: NSRange(location: charIndex, length: 0))
+        guard let marker = storage.attribute(.listMarker, at: lineRange.location, effectiveRange: nil) as? ListMarker,
+              case .task = marker.kind else { return false }
+
+        let firstGlyph = layoutManager.glyphIndexForCharacter(at: lineRange.location)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: firstGlyph, effectiveRange: nil)
+        let baseline = fragment.minY + layoutManager.location(forGlyphAt: firstGlyph).y
+        guard marker.checkboxRect(baselineY: baseline).insetBy(dx: -4, dy: -4).contains(containerPoint) else { return false }
+
+        let line = string.substring(with: lineRange) as NSString
+        guard let regex = try? NSRegularExpression(pattern: #"\[([ xX])\]"#),
+              let match = regex.firstMatch(in: line as String, range: NSRange(location: 0, length: line.length)) else { return false }
+        let mark = line.substring(with: match.range(at: 1))
+        let target = NSRange(location: lineRange.location + match.range(at: 1).location, length: 1)
+        guard shouldChangeText(in: target, replacementString: mark == " " ? "x" : " ") else { return true }
+        storage.replaceCharacters(in: target, with: mark == " " ? "x" : " ")
+        didChangeText()
+        return true
+    }
+
+    // MARK: - Inline video
+
+    /// Players opened over video cards, keyed by attachment. The engine reuses
+    /// a card's attachment object across restyles, so a player can follow its
+    /// card as the text re-lays out.
+    private var videoPlayers: [ObjectIdentifier: (attachment: VideoAttachment, view: AVPlayerView)] = [:]
+
+    private func playVideoIfClicked(_ event: NSEvent) -> Bool {
+        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        let containerPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        guard charIndex < storage.length,
+              let attachment = storage.attribute(.attachment, at: charIndex, effectiveRange: nil) as? VideoAttachment,
+              let frame = videoFrame(at: charIndex, attachment: attachment), frame.contains(point) else { return false }
+
+        let id = ObjectIdentifier(attachment)
+        if let existing = videoPlayers[id] {
+            existing.view.player?.play()
+            return true
+        }
+        let playerView = AVPlayerView(frame: frame)
+        playerView.controlsStyle = .inline
+        playerView.showsFullScreenToggleButton = true
+        playerView.wantsLayer = true
+        playerView.layer?.cornerRadius = 8
+        playerView.layer?.masksToBounds = true
+        playerView.player = AVPlayer(url: attachment.fileURL)
+        addSubview(playerView)
+        videoPlayers[id] = (attachment, playerView)
+        playerView.player?.play()
+        return true
+    }
+
+    /// The poster area of the video card at `charIndex`, in view coordinates.
+    /// Attachments sit on the baseline, so the card's top is baseline − height.
+    private func videoFrame(at charIndex: Int, attachment: VideoAttachment) -> NSRect? {
+        guard let layoutManager else { return nil }
+        let glyph = layoutManager.glyphIndexForCharacter(at: charIndex)
+        let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let location = layoutManager.location(forGlyphAt: glyph)
+        let size = layoutManager.attachmentSize(forGlyphAt: glyph)
+        guard size.width > 0 else { return nil }
+        let origin = NSPoint(x: fragment.minX + location.x + textContainerOrigin.x,
+                             y: fragment.minY + location.y - size.height + textContainerOrigin.y)
+        return NSRect(origin: origin, size: attachment.videoRect.size)
+    }
+
+    /// Keeps open players on their cards after a restyle; closes players whose
+    /// card is gone (deleted, or switched to its raw source).
+    private func repositionVideoPlayers() {
+        guard !videoPlayers.isEmpty, let storage = textStorage else { return }
+        var located: [ObjectIdentifier: Int] = [:]
+        storage.enumerateAttribute(.attachment, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            if let video = value as? VideoAttachment { located[ObjectIdentifier(video)] = range.location }
+        }
+        if let layoutManager, let textContainer { layoutManager.ensureLayout(for: textContainer) }
+        for (id, entry) in videoPlayers {
+            if let index = located[id], let frame = videoFrame(at: index, attachment: entry.attachment) {
+                entry.view.frame = frame
+            } else {
+                entry.view.player?.pause()
+                entry.view.removeFromSuperview()
+                videoPlayers[id] = nil
+            }
         }
     }
 

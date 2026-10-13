@@ -10,7 +10,6 @@ struct EditorView: View {
     @State private var liveWordCount: Int
     @State private var liveCharCount: Int
     @State private var saveTask: Task<Void, Never>? = nil
-    @State private var showsInspector = false
 
     @AppStorage("notely.editorFont") private var editorFontName: String = "System"
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
@@ -44,8 +43,6 @@ struct EditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            EditorToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount, showsInspector: $showsInspector)
-
             ZStack(alignment: .trailing) {
                 WysiwygEditor(
                     initialText: displayedText,
@@ -56,8 +53,6 @@ struct EditorView: View {
                     onTextChange: handleTextChange
                 )
                 .frame(maxWidth: .infinity)
-                .padding(.top, 40)
-                .padding(.bottom, 24)
                 .background(Color.editorBg)
 
                 // Navigation lives at the right edge: a thin tick rail that
@@ -65,14 +60,9 @@ struct EditorView: View {
                 // centered text and is independent of the info popover.
                 OutlineRail(headings: outlineHeadings)
             }
-
-            Rectangle()
-                .fill(Color.borderColor)
-                .frame(height: 1)
-
-            StatusBarView(note: note, wordCount: liveWordCount, charCount: liveCharCount)
         }
         .background(Color.editorBg)
+        .modifier(NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
         .onAppear {
             loadNote()
         }
@@ -139,84 +129,82 @@ struct EditorView: View {
 
 }
 
-/// Bottom status bar: word count, character count, last updated time, tags.
-struct StatusBarView: View {
-    let note: FileNote
-    let wordCount: Int
-    let charCount: Int
+/// The window toolbar for the editor: the note's title and location in the
+/// title area, note actions as system toolbar buttons (Liquid Glass on
+/// macOS 26+). With `note == nil` only New Note is offered.
+struct NoteToolbar: ViewModifier {
+    var note: FileNote? = nil
+    var wordCount = 0
+    var charCount = 0
+    @Environment(AppModel.self) var appModel
+    @Environment(FileNoteStore.self) var store
+    @State private var showsInfo = false
 
-    var body: some View {
-        HStack(spacing: 16) {
-            Text("\(wordCount) words · \(charCount) characters")
-                .font(.notely(11))
-                .foregroundColor(.tertiaryText)
+    /// The file name: notes are files, and clipped articles often have no
+    /// heading, so their first line makes a poor title.
+    private var title: String {
+        note?.filename ?? "Notes"
+    }
 
-            Spacer()
+    /// "Clippings / AI · Edited Oct 9"
+    private var subtitle: String {
+        guard let note else { return "" }
+        let folder = note.relativePath.split(separator: "/").joined(separator: " / ")
+        let edited = Self.editedLabel(for: note.updatedAt)
+        return folder.isEmpty ? edited : "\(folder) · \(edited)"
+    }
 
-            if !note.tags.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(note.tags.prefix(3), id: \.self) { tag in
-                        Text("#\(tag)")
-                            .font(.notely(11, weight: .medium))
-                            .foregroundColor(.accent)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(Color.accent.opacity(0.08)))
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle(title)
+            .navigationSubtitle(subtitle)
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        appModel.openNote(store.createNote()?.id)
+                    } label: {
+                        Label("New Note", systemImage: "square.and.pencil")
+                    }
+                    .help("New Note (⌘N)")
+
+                    if let note {
+                        Button {
+                            showsInfo.toggle()
+                        } label: {
+                            Label("Info", systemImage: "info.circle")
+                        }
+                        .help("Note Info")
+                        .popover(isPresented: $showsInfo, arrowEdge: .bottom) {
+                            DocumentInfoPopover(note: note, wordCount: wordCount, charCount: charCount)
+                        }
+
+                        Menu {
+                            Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
+                            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                appModel.selectedNoteId = nil
+                                store.deleteNote(note.id)
+                            }
+                        } label: {
+                            Label("More", systemImage: "ellipsis")
+                        }
+                        .help("More")
                     }
                 }
             }
-
-            Text("Edited \(note.updatedAt.formatted(.relative(presentation: .named)))")
-                .font(.notely(11))
-                .foregroundColor(.tertiaryText)
-        }
-        .frame(height: 28)
-        .padding(.horizontal, 20)
-        .background(Color.editorBg)
     }
-}
 
-/// Top toolbar for the editor: actions on the right.
-struct EditorToolbar: View {
-    let note: FileNote
-    let wordCount: Int
-    let charCount: Int
-    @Binding var showsInspector: Bool
-
-    var body: some View {
-        HStack {
-            Spacer()
-
-            ToolbarIconButton(systemName: "info.circle", isSelected: showsInspector) {
-                showsInspector.toggle()
-            }
-            .popover(isPresented: $showsInspector, arrowEdge: .bottom) {
-                DocumentInfoPopover(note: note, wordCount: wordCount, charCount: charCount)
-            }
-        }
-        .padding(.horizontal, 20)
-        .frame(height: 40)
-        .background(Color.editorBg)
-    }
-}
-
-struct ToolbarIconButton: View {
-    let systemName: String
-    var isSelected = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(isSelected ? .accent : .secondaryText)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isSelected ? Color.accentHover : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
+    /// "Edited 14:20" today, "Edited yesterday 09:12", else "Edited Oct 8".
+    static func editedLabel(for date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if calendar.isDate(date, inSameDayAs: now) { return "Edited \(time)" }
+        if calendar.isDateInYesterday(date) { return "Edited yesterday \(time)" }
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        let day = sameYear
+            ? date.formatted(.dateTime.month(.abbreviated).day())
+            : date.formatted(.dateTime.month(.abbreviated).day().year())
+        return "Edited \(day)"
     }
 }
 
@@ -349,7 +337,7 @@ struct OutlineRail: View {
         .frame(maxHeight: 440)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.noteListBg)
+                .fill(Color.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)

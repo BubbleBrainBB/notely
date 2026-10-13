@@ -3,41 +3,56 @@ import Foundation
 
 /// Represents a Markdown inline rule for the WYSIWYG engine.
 struct WysiwygInlineRule {
+    enum Kind { case plain, code, hashtag }
+
     let pattern: NSRegularExpression
     /// Returns the marker ranges (to be hidden/faded) and content ranges (to be styled).
     let analyze: (NSTextCheckingResult, NSString) -> (markers: [NSRange], content: [NSRange])
     let contentAttributes: [NSAttributedString.Key: Any]
+    var kind: Kind = .plain
 }
 
-/// Style definitions for Markdown rendering.
+/// Fonts and attributes for every Markdown element, after the 拾页 Markdown
+/// spec (design canvas board ⑩): body 16 / line height 1.75 in ink, headings
+/// in the same ink, quiet markers, tinted blocks.
 struct MarkdownStyle {
+    let fontSize: CGFloat
+    let lineSpacing: CGFloat
+    let bodyFont: NSFont
+
+    let baseParagraph: [NSAttributedString.Key: Any]
+    /// Empty lines: one body-size line with no extra spacing, so a blank line
+    /// between paragraphs reads as a paragraph gap rather than a full line.
+    let blankLineParagraph: NSParagraphStyle
+
+    /// The note's first `#` heading, shown as its title.
+    let title: [NSAttributedString.Key: Any]
+    /// `#`…`######` (index 0 = a later `#`).
+    let headings: [[NSAttributedString.Key: Any]]
+
     let bold: [NSAttributedString.Key: Any]
+    let boldItalic: [NSAttributedString.Key: Any]
     let italic: [NSAttributedString.Key: Any]
     let strikethrough: [NSAttributedString.Key: Any]
     let inlineCode: [NSAttributedString.Key: Any]
     let link: [NSAttributedString.Key: Any]
-    let heading1: [NSAttributedString.Key: Any]
-    let heading2: [NSAttributedString.Key: Any]
-    let heading3: [NSAttributedString.Key: Any]
-    let heading4: [NSAttributedString.Key: Any]
-    let heading5: [NSAttributedString.Key: Any]
-    let heading6: [NSAttributedString.Key: Any]
-    let blockquote: [NSAttributedString.Key: Any]
-    let codeBlock: [NSAttributedString.Key: Any]
-    let listItem: [NSAttributedString.Key: Any]
-    let taskList: [NSAttributedString.Key: Any]
-    let hr: [NSAttributedString.Key: Any]
+    let highlight: [NSAttributedString.Key: Any]
     let hashtag: [NSAttributedString.Key: Any]
-    let baseParagraph: [NSAttributedString.Key: Any]
-    let calloutPara: NSParagraphStyle
+
+    let codeBlock: [NSAttributedString.Key: Any]
+    let calloutTitleFont: NSFont
+    let calloutBodyFont: NSFont
+    let quoteAttributionFont: NSFont
+    let rawSourceFont: NSFont
 }
 
 /// The WYSIWYG engine that applies Markdown styling and marker hiding.
 ///
 /// Key principle: the underlying text storage always contains the raw Markdown.
-/// Styling is applied via temporary attributes. Marker characters are hidden
-/// (zero alpha) when the cursor is outside their paragraph, and shown with
-/// faded color when the cursor is inside.
+/// Styling is applied via temporary attributes. Syntax characters are collapsed
+/// to zero width; inline and heading syntax is revealed (in the marker color)
+/// only on the paragraph holding the caret. Bullets, checkboxes, quote bars and
+/// rules are drawn by `CodeBlockLayoutManager` in place of their syntax.
 final class WysiwygEngine {
     private let style: MarkdownStyle
     private let inlineRules: [WysiwygInlineRule]
@@ -46,6 +61,21 @@ final class WysiwygEngine {
     private var tableCache: [String: TableAttachment] = [:]
     /// Rendered math cached by "display|width|source" for the same reason.
     private var mathCache: [String: MathAttachment] = [:]
+    /// Video cards cached by "width|path|source" so an inline player keeps
+    /// tracking the same attachment object across restyles. Rebuilt once the
+    /// poster arrives.
+    private var videoCache: [String: (attachment: VideoAttachment, hasPoster: Bool)] = [:]
+
+    /// Obsidian embed: `![[file.ext]]`, `![[file|300]]`.
+    private static let embedPattern = try! NSRegularExpression(pattern: #"!\[\[([^\]\n]+)\]\]"#)
+
+    /// Indent per blockquote level: 3pt bar + 14pt gap.
+    static let quoteIndent: CGFloat = 17
+    /// Horizontal padding inside inline pills (inline code, hashtags).
+    static let pillPadding: CGFloat = 4
+    static let calloutTextIndent: CGFloat = 40
+    static let codeTextIndent: CGFloat = 16
+    static let listIndentStep: CGFloat = ListMarker.slotWidth
 
     init(style: MarkdownStyle) {
         self.style = style
@@ -82,141 +112,122 @@ final class WysiwygEngine {
         }
     }
 
-    static func makeStyle(fontSize: CGFloat = 17, lineHeight: CGFloat = 1.7, fontName: String = "System") -> MarkdownStyle {
-        let baseColor = NSColor(named: "PrimaryText") ?? .textColor
-        let secondaryColor = NSColor(named: "SecondaryText") ?? .secondaryLabelColor
-        let accentColor = NSColor(named: "AccentColor") ?? .controlAccentColor
-        let codeBgColor = NSColor(named: "CodeBlockBackground") ?? NSColor.controlBackgroundColor
-        let blockquoteBg = (NSColor(named: "AccentColor") ?? NSColor.systemOrange).withAlphaComponent(0.04)
+    static func paragraph(indent: CGFloat = 0, tail: CGFloat = 0, lineSpacing: CGFloat,
+                          before: CGFloat = 0, after: CGFloat = 0) -> NSMutableParagraphStyle {
+        let p = NSMutableParagraphStyle()
+        p.firstLineHeadIndent = indent
+        p.headIndent = indent
+        p.tailIndent = tail
+        p.lineSpacing = lineSpacing
+        p.paragraphSpacingBefore = before
+        p.paragraphSpacing = after
+        return p
+    }
+
+    static func makeStyle(fontSize: CGFloat = 16, lineHeight: CGFloat = 1.75, fontName: String = "System") -> MarkdownStyle {
+        let ink = MarkdownPalette.primary
+        let lineSpacing = fontSize * (lineHeight - 1.0)
 
         // Body typeface follows the user's Editor Font choice. Bold/italic are
-        // derived from the same family via NSFontManager so they stay consistent.
-        let baseFont = Self.resolveFont(name: fontName, size: fontSize)
-        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
-        let italicFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .italicFontMask)
+        // derived from the same family so they stay consistent.
+        let bodyFont = resolveFont(name: fontName, size: fontSize)
+        let boldFont = resolveFont(name: fontName, size: fontSize, weight: .semibold)
+        let italicFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
+        let boldItalicFont = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
 
-        let para = NSMutableParagraphStyle()
-        para.lineSpacing = (fontSize * (lineHeight - 1.0))
+        let blank = NSMutableParagraphStyle()
+        blank.minimumLineHeight = fontSize
+        blank.maximumLineHeight = fontSize
 
-        let baseParagraph: [NSAttributedString.Key: Any] = [
-            .font: baseFont,
-            .foregroundColor: baseColor,
-            .paragraphStyle: para,
-        ]
-
-        func headingAttrs(level: Int) -> [NSAttributedString.Key: Any] {
-            let sizes: [CGFloat] = [28, 22, 20, 18, 17, 16]
-            let weights: [NSFont.Weight] = [.bold, .semibold, .semibold, .semibold, .semibold, .semibold]
-            let idx = max(0, min(5, level - 1))
-            let hp = NSMutableParagraphStyle()
-            hp.lineSpacing = 3
-            hp.paragraphSpacingBefore = level == 1 ? 10 : 16
-            hp.paragraphSpacing = 6
-            return [
-                .font: Self.resolveFont(name: fontName, size: sizes[idx], weight: weights[idx]),
-                .foregroundColor: baseColor,
-                .paragraphStyle: hp,
+        func heading(size: CGFloat, weight: NSFont.Weight, before: CGFloat, after: CGFloat,
+                     color: NSColor = ink) -> [NSAttributedString.Key: Any] {
+            [
+                .font: resolveFont(name: fontName, size: size, weight: weight),
+                .foregroundColor: color,
+                .paragraphStyle: paragraph(lineSpacing: 4, before: before, after: after),
             ]
         }
 
-        let bp = NSMutableParagraphStyle()
-        bp.headIndent = 20
-        bp.firstLineHeadIndent = 20
-        bp.lineSpacing = 2
-
-        let cbPara = NSMutableParagraphStyle()
-        cbPara.headIndent = 16
-        cbPara.firstLineHeadIndent = 16
-        // Negative tail indent insets the text from the trailing edge so code
-        // lines wrap inside the box drawn by CodeBlockLayoutManager.
-        cbPara.tailIndent = -16
-        cbPara.lineSpacing = 4
-        cbPara.paragraphSpacing = 0
-        cbPara.paragraphSpacingBefore = 0
-
-        // Callout body: indented past the left accent bar, with right padding so
-        // text wraps inside the box drawn by CodeBlockLayoutManager.
-        let calloutPara = NSMutableParagraphStyle()
-        calloutPara.headIndent = 20
-        calloutPara.firstLineHeadIndent = 20
-        calloutPara.tailIndent = -14
-        calloutPara.lineSpacing = 3
-        calloutPara.paragraphSpacing = 0
-        calloutPara.paragraphSpacingBefore = 0
+        let mono = NSFont.monospacedSystemFont(ofSize: (fontSize * 0.85).rounded(), weight: .regular)
 
         return MarkdownStyle(
-            bold: [
-                .font: boldFont,
-                .foregroundColor: baseColor,
+            fontSize: fontSize,
+            lineSpacing: lineSpacing,
+            bodyFont: bodyFont,
+            baseParagraph: [
+                .font: bodyFont,
+                .foregroundColor: ink,
+                .paragraphStyle: paragraph(lineSpacing: lineSpacing),
             ],
-            italic: [
-                .font: italicFont,
-                .foregroundColor: secondaryColor,
+            blankLineParagraph: blank,
+            title: heading(size: 32, weight: .bold, before: 0, after: 12),
+            headings: [
+                heading(size: 26, weight: .bold, before: 24, after: 8),
+                heading(size: 22, weight: .bold, before: 16, after: 6),
+                heading(size: 18, weight: .semibold, before: 12, after: 4),
+                heading(size: fontSize, weight: .semibold, before: 8, after: 2),
+                heading(size: fontSize, weight: .semibold, before: 8, after: 2),
+                heading(size: fontSize, weight: .semibold, before: 8, after: 2, color: MarkdownPalette.tertiary),
             ],
+            bold: [.font: boldFont, .foregroundColor: ink],
+            boldItalic: [.font: boldItalicFont, .foregroundColor: ink],
+            italic: [.font: italicFont],
             strikethrough: [
-                .font: baseFont,
-                .foregroundColor: NSColor(named: "TertiaryText") ?? .tertiaryLabelColor,
+                .foregroundColor: MarkdownPalette.faint,
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                .strikethroughColor: NSColor(named: "TertiaryText") ?? .tertiaryLabelColor,
+                .strikethroughColor: MarkdownPalette.faint,
             ],
             inlineCode: [
-                .font: NSFont.monospacedSystemFont(ofSize: fontSize - 2, weight: .regular),
-                .foregroundColor: NSColor(named: "SecondaryText") ?? secondaryColor,
-                .backgroundColor: codeBgColor,
+                .font: mono,
+                .foregroundColor: MarkdownPalette.inlineCode,
             ],
             link: [
-                .font: baseFont,
-                .foregroundColor: accentColor,
+                .foregroundColor: ink,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .underlineColor: MarkdownPalette.linkUnderline,
             ],
-            heading1: headingAttrs(level: 1),
-            heading2: headingAttrs(level: 2),
-            heading3: headingAttrs(level: 3),
-            heading4: headingAttrs(level: 4),
-            heading5: headingAttrs(level: 5),
-            heading6: headingAttrs(level: 6),
-            blockquote: [
-                .font: italicFont,
-                .foregroundColor: secondaryColor,
-                .paragraphStyle: bp,
-                .backgroundColor: blockquoteBg,
+            // Drawn by CodeBlockLayoutManager around the glyphs only;
+            // .backgroundColor would also paint the line spacing below.
+            highlight: [.textHighlight: MarkdownPalette.highlight],
+            hashtag: [
+                .font: resolveFont(name: fontName, size: (fontSize * 0.85).rounded()),
+                .foregroundColor: MarkdownPalette.secondary,
             ],
             codeBlock: [
-                .font: NSFont.monospacedSystemFont(ofSize: fontSize - 3, weight: .regular),
-                .foregroundColor: NSColor(named: "SecondaryText") ?? secondaryColor,
+                .font: NSFont.monospacedSystemFont(ofSize: (fontSize * 0.84).rounded(.down) + 0.5, weight: .regular),
+                .foregroundColor: ink,
                 // The block background is drawn as one rounded box by
                 // CodeBlockLayoutManager (see the .codeBlockBackground marker
                 // applied in applyStyle), not via .backgroundColor which paints
                 // a ragged per-line fill.
-                .paragraphStyle: cbPara,
+                .paragraphStyle: paragraph(indent: codeTextIndent, tail: -codeTextIndent, lineSpacing: 6),
             ],
-            listItem: [
-                .font: baseFont,
-                .foregroundColor: baseColor,
-            ],
-            taskList: [
-                .font: NSFont.monospacedSystemFont(ofSize: fontSize - 2, weight: .medium),
-                .foregroundColor: accentColor,
-            ],
-            hr: [
-                .font: baseFont,
-                .foregroundColor: NSColor(named: "BorderColor") ?? .separatorColor,
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                .strikethroughColor: NSColor(named: "BorderColor") ?? .separatorColor,
-            ],
-            hashtag: [
-                .font: Self.resolveFont(name: fontName, size: fontSize - 1, weight: .medium),
-                .foregroundColor: accentColor,
-            ],
-            baseParagraph: baseParagraph,
-            calloutPara: calloutPara
+            calloutTitleFont: NSFont.systemFont(ofSize: 14, weight: .semibold),
+            calloutBodyFont: resolveFont(name: fontName, size: fontSize - 1),
+            quoteAttributionFont: resolveFont(name: fontName, size: 12.5),
+            rawSourceFont: NSFont.monospacedSystemFont(ofSize: max(11, fontSize - 3), weight: .regular)
         )
     }
 
     // MARK: - Inline rules
 
     private static func buildInlineRules(style: MarkdownStyle) -> [WysiwygInlineRule] {
-        [
+        func wrapped(_ pattern: String, markerLength: Int, attrs: [NSAttributedString.Key: Any],
+                     kind: WysiwygInlineRule.Kind = .plain) -> WysiwygInlineRule {
+            WysiwygInlineRule(
+                pattern: try! NSRegularExpression(pattern: pattern),
+                analyze: { match, _ in
+                    let full = match.range
+                    let content = match.range(at: 1)
+                    return ([NSRange(location: full.location, length: markerLength),
+                             NSRange(location: NSMaxRange(content), length: markerLength)], [content])
+                },
+                contentAttributes: attrs,
+                kind: kind
+            )
+        }
+
+        return [
             // Images: ![alt](url)
             WysiwygInlineRule(
                 pattern: try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#),
@@ -232,7 +243,7 @@ final class WysiwygEngine {
                     }
                     return (markers, altRange.length > 0 ? [altRange] : [])
                 },
-                contentAttributes: style.link
+                contentAttributes: [.foregroundColor: MarkdownPalette.tertiary]
             ),
 
             // Links: [text](url)
@@ -249,88 +260,33 @@ final class WysiwygEngine {
                 contentAttributes: style.link
             ),
 
-            // Bold+italic: ***text***
+            wrapped(#"\*{3}(.+?)\*{3}"#, markerLength: 3, attrs: style.boldItalic),
+            wrapped(#"\*{2}(.+?)\*{2}"#, markerLength: 2, attrs: style.bold),
+            wrapped(#"(?<!\*)\*(?!\s)([^*]+?)(?<!\s)\*(?!\*)"#, markerLength: 1, attrs: style.italic),
+            wrapped(#"~~(.+?)~~"#, markerLength: 2, attrs: style.strikethrough),
+            wrapped(#"==(?![\s=])(.+?)(?<!\s)=="#, markerLength: 2, attrs: style.highlight),
+
+            // Underline: <u>text</u> (HTML, as pasted from web clippings)
             WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"\*{3}(.+?)\*{3}"#),
-                analyze: { match, str in
-                    let full = match.range
+                pattern: try! NSRegularExpression(pattern: #"<u>(.+?)</u>"#),
+                analyze: { match, _ in
                     let content = match.range(at: 1)
-                    var markers: [NSRange] = []
-                    markers.append(NSRange(location: full.location, length: 3))
-                    markers.append(NSRange(location: content.location + content.length, length: 3))
-                    return (markers, [content])
+                    return ([NSRange(location: match.range.location, length: 3),
+                             NSRange(location: NSMaxRange(content), length: 4)], [content])
                 },
                 contentAttributes: [
-                    .font: NSFontManager.shared.convert(
-                        (style.bold[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 17),
-                        toHaveTrait: .italicFontMask
-                    ),
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .underlineColor: MarkdownPalette.primary,
                 ]
             ),
+            wrapped(#"`([^`]+)`"#, markerLength: 1, attrs: style.inlineCode, kind: .code),
 
-            // Bold: **text**
+            // Hashtags: #word/path (any script, so #决策 works too)
             WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"\*{2}(.+?)\*{2}"#),
-                analyze: { match, str in
-                    let full = match.range
-                    let content = match.range(at: 1)
-                    var markers: [NSRange] = []
-                    markers.append(NSRange(location: full.location, length: 2))
-                    markers.append(NSRange(location: content.location + content.length, length: 2))
-                    return (markers, [content])
-                },
-                contentAttributes: style.bold
-            ),
-
-            // Italic: *text*
-            WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"(?<!\*)\*(?!\s)([^*]+?)(?<!\s)\*(?!\*)"#),
-                analyze: { match, str in
-                    let full = match.range
-                    let content = match.range(at: 1)
-                    var markers: [NSRange] = []
-                    markers.append(NSRange(location: full.location, length: 1))
-                    markers.append(NSRange(location: content.location + content.length, length: 1))
-                    return (markers, [content])
-                },
-                contentAttributes: style.italic
-            ),
-
-            // Strikethrough: ~~text~~
-            WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"~~(.+?)~~"#),
-                analyze: { match, str in
-                    let full = match.range
-                    let content = match.range(at: 1)
-                    var markers: [NSRange] = []
-                    markers.append(NSRange(location: full.location, length: 2))
-                    markers.append(NSRange(location: content.location + content.length, length: 2))
-                    return (markers, [content])
-                },
-                contentAttributes: style.strikethrough
-            ),
-
-            // Inline code: `code`
-            WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"`([^`]+)`"#),
-                analyze: { match, str in
-                    let full = match.range
-                    let content = match.range(at: 1)
-                    var markers: [NSRange] = []
-                    markers.append(NSRange(location: full.location, length: 1))
-                    markers.append(NSRange(location: content.location + content.length, length: 1))
-                    return (markers, [content])
-                },
-                contentAttributes: style.inlineCode
-            ),
-
-            // Hashtags: #word/path
-            WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"(?m)(?<=^|[\s(\[])#[A-Za-z][\w/-]*"#),
-                analyze: { match, str in
-                    ([], [match.range])
-                },
-                contentAttributes: style.hashtag
+                pattern: try! NSRegularExpression(pattern: #"(?m)(?<=^|[\s(\[])#[\p{L}][\p{L}\p{N}_/-]*"#),
+                analyze: { match, _ in ([], [match.range]) },
+                contentAttributes: style.hashtag,
+                kind: .hashtag
             ),
         ]
     }
@@ -339,91 +295,110 @@ final class WysiwygEngine {
 
     /// Applies WYSIWYG styling to the text storage.
     /// - Parameters:
-    ///   - storage: The text storage to style.
-    ///   - cursorLocation: The current cursor position (for marker hiding).
+    ///   - storage: The text storage to style. Holds raw Markdown on entry.
+    ///   - cursorLocation: The caret, in raw-Markdown coordinates.
+    ///   - maxWidth: The text column width, for images, tables, math and the
+    ///     properties panel.
     func applyStyle(to storage: NSTextStorage, cursorLocation: Int,
-                    activeTableIndex: Int = -1, maxTableWidth: CGFloat = 640,
-                    activeMathIndex: Int = -1, maxMathWidth: CGFloat = 640) {
+                    activeTableIndex: Int = -1, activeMathIndex: Int = -1,
+                    maxWidth: CGFloat = 640) {
         let fullRange = NSRange(location: 0, length: storage.length)
         let nsString = storage.string as NSString
 
         storage.beginEditing()
 
         // Clear temporary attributes
-        storage.removeAttribute(.foregroundColor, range: fullRange)
-        storage.removeAttribute(.backgroundColor, range: fullRange)
-        storage.removeAttribute(.font, range: fullRange)
-        storage.removeAttribute(.underlineStyle, range: fullRange)
-        storage.removeAttribute(.strikethroughStyle, range: fullRange)
-        storage.removeAttribute(.paragraphStyle, range: fullRange)
-        storage.removeAttribute(.attachment, range: fullRange)
-        storage.removeAttribute(.codeBlockBackground, range: fullRange)
-        storage.removeAttribute(.calloutType, range: fullRange)
-        storage.removeAttribute(.listBullet, range: fullRange)
+        for key: NSAttributedString.Key in [
+            .foregroundColor, .backgroundColor, .font, .underlineStyle, .underlineColor,
+            .strikethroughStyle, .strikethroughColor, .paragraphStyle, .attachment, .kern,
+            .codeBlockBackground, .codeBlockLanguage, .calloutType, .calloutIcon, .listMarker,
+            .blockquoteDepth, .inlinePill, .textHighlight, .horizontalRule,
+        ] {
+            storage.removeAttribute(key, range: fullRange)
+        }
 
         // Apply base paragraph style to everything
         storage.addAttributes(style.baseParagraph, range: fullRange)
 
-        // Process line by line for block-level elements
-        var lineRanges: [(NSRange, String)] = []
-        nsString.enumerateSubstrings(in: fullRange, options: [.byLines]) { substring, range, _, _ in
-            lineRanges.append((range, substring ?? ""))
+        // Lines, with and without their terminators. Block decorations go on
+        // the enclosing range so consecutive lines form one continuous run.
+        var lines: [(range: NSRange, enclosing: NSRange, text: String)] = []
+        nsString.enumerateSubstrings(in: fullRange, options: [.byLines]) { substring, range, enclosing, _ in
+            lines.append((range, enclosing, substring ?? ""))
         }
 
-        var inCodeBlock = false
-        var codeBlockStart = 0
-        var codeBlockRanges: [NSRange] = []
+        let frontmatter = Frontmatter.parse(nsString)
+        let frontmatterActive = frontmatter.map {
+            cursorLocation > 0 && cursorLocation <= NSMaxRange($0.range)
+        } ?? false
 
         // Line-start offsets of fences that belong to a *closed* code block.
         // A stray or not-yet-closed fence is absent here, so it is processed as
         // an ordinary line instead of turning the rest of the document into code.
         let realFenceLocations = scanCodeBlocks(in: nsString).fenceLocations
+        let quoteGroups = Self.quoteGroups(lines.map(\.text))
+
+        var inCodeBlock = false
+        var codeOpen: (range: NSRange, language: String) = (NSRange(), "")
+        var codeBlockRanges: [NSRange] = []
 
         var inCallout = false
         var calloutStart = 0
         var calloutType = "note"
 
-        for (lineRange, line) in lineRanges {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+        // The first heading before any other content is the note's title.
+        var seenContent = false
+        // Code blocks and callouts get extra space around them, applied after
+        // the loop so the neighbors' own paragraph styles don't overwrite it.
+        var spacedBlocks: [NSRange] = []
+
+        for (index, line) in lines.enumerated() {
+            let lineRange = line.range
+            let trimmed = line.text.trimmingCharacters(in: .whitespaces)
+            let isActive = NSLocationInRange(cursorLocation, lineRange) || cursorLocation == NSMaxRange(lineRange)
+
+            // Frontmatter: replaced by the properties panel at the end, or shown
+            // as quiet raw source while the caret is inside it.
+            if let frontmatter, NSLocationInRange(lineRange.location, frontmatter.range) {
+                if frontmatterActive {
+                    let isLast = NSMaxRange(lineRange) == NSMaxRange(frontmatter.range)
+                    storage.addAttributes([
+                        .font: style.rawSourceFont,
+                        .foregroundColor: MarkdownPalette.tertiary,
+                        .paragraphStyle: Self.paragraph(lineSpacing: 4, after: isLast ? 16 : 0),
+                    ], range: line.enclosing)
+                }
+                continue
+            }
 
             // Code fence detection (only fences that pair into a closed block).
             if realFenceLocations.contains(lineRange.location) {
                 if !inCodeBlock {
                     inCodeBlock = true
-                    codeBlockStart = lineRange.location
+                    let info = trimmed.drop(while: { $0 == "`" || $0 == "~" })
+                    codeOpen = (lineRange, info.split(separator: " ").first.map(String.init) ?? "")
                 } else {
                     inCodeBlock = false
-                    let blockRange = NSRange(location: codeBlockStart, length: (lineRange.location + lineRange.length) - codeBlockStart)
+                    seenContent = true
+                    let blockRange = NSRange(location: codeOpen.range.location,
+                                             length: NSMaxRange(lineRange) - codeOpen.range.location)
                     codeBlockRanges.append(blockRange)
                     storage.addAttributes(style.codeBlock, range: blockRange)
-                    // Marker for CodeBlockLayoutManager to draw the unified box.
                     storage.addAttribute(.codeBlockBackground, value: true, range: blockRange)
-                    // Add spacing before the first line of the code block
-                    if codeBlockStart > 0 {
-                        let prevLineEnd = codeBlockStart - 1
-                        if prevLineEnd >= 0 && prevLineEnd < storage.length {
-                            var prevAttrs = storage.attributes(at: prevLineEnd, effectiveRange: nil)
-                            if let prevPara = prevAttrs[.paragraphStyle] as? NSParagraphStyle {
-                                let modified = prevPara.mutableCopy() as! NSMutableParagraphStyle
-                                modified.paragraphSpacing = 12
-                                prevAttrs[.paragraphStyle] = modified
-                                storage.addAttribute(.paragraphStyle, value: modified, range: NSRange(location: prevLineEnd, length: 1))
-                            }
+                    storage.addAttribute(.codeBlockLanguage, value: codeOpen.language, range: blockRange)
+                    let bodyStart = NSMaxRange(codeOpen.range) + 1
+                    if lineRange.location > bodyStart {
+                        highlightSyntax(storage, in: NSRange(location: bodyStart, length: lineRange.location - bodyStart),
+                                        language: codeOpen.language)
+                    }
+                    for fence in [codeOpen.range, lineRange] {
+                        if NSLocationInRange(cursorLocation, fence) || cursorLocation == NSMaxRange(fence) {
+                            applyMarkerStyle(storage, range: fence)
+                        } else {
+                            collapse(storage, fence)
                         }
                     }
-                    // Add spacing after the last line of the code block
-                    let blockEnd = blockRange.location + blockRange.length
-                    if blockEnd < storage.length {
-                        var endAttrs = storage.attributes(at: blockEnd, effectiveRange: nil)
-                        if let endPara = endAttrs[.paragraphStyle] as? NSParagraphStyle {
-                            let modified = endPara.mutableCopy() as! NSMutableParagraphStyle
-                            modified.paragraphSpacingBefore = 12
-                            endAttrs[.paragraphStyle] = modified
-                            storage.addAttribute(.paragraphStyle, value: modified, range: NSRange(location: blockEnd, length: 1))
-                        }
-                    }
-                    // Apply faded color to fence delimiters
-                    applyMarkerStyle(storage, range: lineRange)
+                    spacedBlocks.append(blockRange)
                 }
                 continue
             }
@@ -434,94 +409,111 @@ final class WysiwygEngine {
             if trimmed.hasPrefix(":::") {
                 if !inCallout {
                     inCallout = true
+                    seenContent = true
                     calloutStart = lineRange.location
-                    // Parse the type from the opening line ("note 类比" -> "note").
                     let after = trimmed.dropFirst(3).trimmingCharacters(in: .whitespaces)
                     calloutType = after.split(whereSeparator: { $0 == " " }).first.map(String.init) ?? "note"
-                    styleCalloutOpeningLine(storage, line: line, lineRange: lineRange, type: calloutType, cursorLocation: cursorLocation)
+                    styleCalloutOpeningLine(storage, line: line.text, lineRange: lineRange, type: calloutType, isActive: isActive)
                 } else {
                     inCallout = false
-                    let blockRange = NSRange(location: calloutStart, length: (lineRange.location + lineRange.length) - calloutStart)
-                    // Marker for CodeBlockLayoutManager to draw the tinted box + bar.
+                    let blockRange = NSRange(location: calloutStart, length: NSMaxRange(lineRange) - calloutStart)
                     storage.addAttribute(.calloutType, value: calloutType, range: blockRange)
-                    // Closing ::: line: indent + hidden (shown faded only when
-                    // the cursor is on the line, so it stays editable).
-                    storage.addAttribute(.paragraphStyle, value: style.calloutPara, range: lineRange)
-                    if NSLocationInRange(cursorLocation, lineRange) {
+                    storage.addAttribute(.paragraphStyle, value: calloutParagraph(), range: lineRange)
+                    // Closing ::: line: collapsed, shown faded only when the caret
+                    // is on it, so it stays editable.
+                    if isActive {
                         applyMarkerStyle(storage, range: lineRange)
                     } else {
-                        hideRange(storage, range: lineRange)
+                        collapse(storage, lineRange)
                     }
-                    addBlockSpacing(storage, blockStart: calloutStart, blockRange: blockRange)
+                    spacedBlocks.append(blockRange)
                 }
                 continue
             }
 
             if inCallout {
-                // Body line: indent past the bar; keep base color. Inline rules
-                // (bold/italic/links) still run afterwards over this range.
-                storage.addAttribute(.paragraphStyle, value: style.calloutPara, range: lineRange)
+                // Body line. Inline rules (bold/italic/links) still run afterwards.
+                storage.addAttributes([.paragraphStyle: calloutParagraph(), .font: style.calloutBodyFont], range: lineRange)
+                continue
+            }
+
+            if trimmed.isEmpty {
+                storage.addAttribute(.paragraphStyle, value: style.blankLineParagraph, range: line.enclosing)
                 continue
             }
 
             // Headings
-            if let headingInfo = parseHeading(line: trimmed) {
-                let headingStyle = headingStyleFor(level: headingInfo.level)
-                storage.addAttributes(headingStyle, range: lineRange)
-                // Hide the # markers for non-active lines
-                applyMarkerHiding(storage: storage, markerRange: headingInfo.markerRange, lineRange: lineRange, cursorLocation: cursorLocation)
+            if let heading = parseHeading(line: line.text) {
+                let isTitle = heading.level == 1 && !seenContent
+                seenContent = true
+                let attrs = isTitle ? style.title : style.headings[heading.level - 1]
+                storage.addAttributes(attrs, range: lineRange)
+                let marker = NSRange(location: lineRange.location + heading.markerRange.location,
+                                     length: heading.markerRange.length)
+                // Live preview: `## ` shows inline on the caret's line only.
+                if isActive {
+                    applyMarkerStyle(storage, range: marker)
+                } else {
+                    collapse(storage, marker)
+                }
                 continue
             }
+            seenContent = true
 
-            // Blockquote
-            if trimmed.hasPrefix(">") {
-                storage.addAttributes(style.blockquote, range: lineRange)
-                // Find > markers and hide them
-                hideBlockquoteMarkers(storage: storage, line: line, lineRange: lineRange, cursorLocation: cursorLocation)
+            // Blockquote (or, when it opens with an emoji, a gray callout).
+            if let group = quoteGroups[index] {
+                styleQuoteLine(storage, line: line.text, lineRange: lineRange, enclosing: line.enclosing,
+                               asCallout: group.isEmoji, isActive: isActive)
+                if group.isEmoji, index == group.end {
+                    let start = lines[group.start].range.location
+                    let blockRange = NSRange(location: start, length: NSMaxRange(lineRange) - start)
+                    storage.addAttribute(.calloutType, value: CalloutKind.emojiQuote, range: blockRange)
+                    spacedBlocks.append(blockRange)
+                }
                 continue
             }
 
             // Horizontal rule
             if isHorizontalRule(trimmed) {
-                storage.addAttributes(style.hr, range: lineRange)
-                continue
-            }
-
-            // Task list item: - [ ] or - [x]
-            if isTaskListItem(trimmed) {
-                storage.addAttributes(style.listItem, range: lineRange)
-                // Style checkbox
-                if let checkboxRange = findCheckboxRange(line: line, lineRange: lineRange) {
-                    storage.addAttributes(style.taskList, range: checkboxRange)
+                if isActive {
+                    applyMarkerStyle(storage, range: lineRange)
+                } else {
+                    collapse(storage, lineRange)
+                    storage.addAttribute(.horizontalRule, value: true, range: lineRange)
                 }
-                applyListHangingIndent(storage: storage, line: line, lineRange: lineRange)
-                // Hide the list marker
-                hideListMarker(storage: storage, line: line, lineRange: lineRange, cursorLocation: cursorLocation)
+                storage.addAttribute(.paragraphStyle,
+                                     value: Self.paragraph(lineSpacing: style.lineSpacing, before: 4, after: 4),
+                                     range: lineRange)
                 continue
             }
 
-            // List items
-            if isListItem(trimmed) {
-                storage.addAttributes(style.listItem, range: lineRange)
-                applyListHangingIndent(storage: storage, line: line, lineRange: lineRange)
-                hideListMarker(storage: storage, line: line, lineRange: lineRange, cursorLocation: cursorLocation)
-                continue
-            }
+            // List items (bullets, numbers, to-dos)
+            styleListItem(storage, line: line.text, lineRange: lineRange, isActive: isActive)
         }
 
-        // Render loadable images as real NSTextAttachment replacement characters.
+        for block in spacedBlocks {
+            addBlockSpacing(storage, blockRange: block)
+        }
+
+        // Collapse images and Obsidian embeds (`![](…)`, `![[…]]`) into
+        // attachments: loaded images, and local videos as poster cards.
+        var replacements: [(range: NSRange, attachment: NSTextAttachment)] = []
+        func isInCode(_ location: Int) -> Bool {
+            codeBlockRanges.contains(where: { NSLocationInRange(location, $0) })
+        }
         if let imageRule = inlineRules.first {
-            var renderableImages: [(range: NSRange, markdown: String, content: LoadedMarkdownImage)] = []
-
             imageRule.pattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
-                guard let match = match else { return }
-                if codeBlockRanges.contains(where: { NSLocationInRange(match.range.location, $0) }) { return }
-
+                guard let match, !isInCode(match.range.location) else { return }
                 let urlString = nsString.substring(with: match.range(at: 2))
                 let markdown = nsString.substring(with: match.range)
+                let alt = nsString.substring(with: match.range(at: 1))
 
-                if let content = ImageLoader.shared.loadSync(urlString: urlString) {
-                    renderableImages.append((match.range, markdown, content))
+                if VideoFile.isVideo(urlString), !isRemoteImageURL(urlString),
+                   let url = ImageLoader.shared.resolveEmbed(urlString) {
+                    replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth)))
+                } else if let content = ImageLoader.shared.loadSync(urlString: urlString) {
+                    replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
+                                                                          caption: alt, maxWidth: maxWidth)))
                 } else if isRemoteImageURL(urlString) {
                     ImageLoader.shared.loadAsync(urlString: urlString) { image in
                         if image != nil {
@@ -530,25 +522,46 @@ final class WysiwygEngine {
                     }
                 }
             }
-
-            for item in renderableImages.reversed() {
-                let attachment = ImageTextAttachment(content: item.content, markdownSource: item.markdown, maxWidth: 500)
-                let paragraph = NSMutableParagraphStyle()
-                paragraph.lineSpacing = 4
-                paragraph.paragraphSpacing = 8
-                paragraph.paragraphSpacingBefore = 8
-                paragraph.alignment = .left
-
-                let replacement = NSMutableAttributedString(attachment: attachment)
-                replacement.addAttributes(style.baseParagraph, range: NSRange(location: 0, length: replacement.length))
-                replacement.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: replacement.length))
-                storage.replaceCharacters(in: item.range, with: replacement)
+        }
+        Self.embedPattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
+            guard let match, !isInCode(match.range.location) else { return }
+            let target = nsString.substring(with: match.range(at: 1))
+            let markdown = nsString.substring(with: match.range)
+            guard let url = ImageLoader.shared.resolveEmbed(target) else { return }
+            if VideoFile.isVideo(url.path) {
+                replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth)))
+            } else if let content = ImageLoader.shared.loadSync(urlString: url.path) {
+                replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
+                                                                      maxWidth: maxWidth)))
             }
+        }
+        replacements.sort { $0.range.location < $1.range.location }
+
+        // Inline styling below runs on the collapsed text, so map the caret
+        // into it: each attachment before the caret shortens the text by its
+        // source length minus one.
+        var inlineCursor = cursorLocation
+        for item in replacements {
+            if NSMaxRange(item.range) <= cursorLocation {
+                inlineCursor -= item.range.length - 1
+            } else if item.range.location < cursorLocation {
+                inlineCursor -= cursorLocation - item.range.location
+            }
+        }
+
+        for item in replacements.reversed() {
+            let replacement = NSMutableAttributedString(attachment: item.attachment)
+            replacement.addAttributes(style.baseParagraph, range: NSRange(location: 0, length: replacement.length))
+            replacement.addAttribute(.paragraphStyle,
+                                     value: Self.paragraph(lineSpacing: 4, before: 8, after: 8),
+                                     range: NSRange(location: 0, length: replacement.length))
+            storage.replaceCharacters(in: item.range, with: replacement)
         }
 
         let styledFullRange = NSRange(location: 0, length: storage.length)
         let styledString = storage.string as NSString
         let styledCodeBlockRanges = findCodeBlockRanges(in: styledString)
+        let styledFrontmatter = frontmatterActive ? nil : frontmatter?.range
 
         // Collect unresolved image ranges so normal link styling does not split ![alt](url).
         var imageRanges: [NSRange] = []
@@ -561,7 +574,7 @@ final class WysiwygEngine {
                     storage.addAttributes(imageRule.contentAttributes, range: contentRange)
                 }
                 for markerRange in markers {
-                    storage.addAttribute(.foregroundColor, value: getMarkerColor(), range: markerRange)
+                    storage.addAttribute(.foregroundColor, value: MarkdownPalette.faint, range: markerRange)
                 }
             }
         }
@@ -572,37 +585,40 @@ final class WysiwygEngine {
             rule.pattern.enumerateMatches(in: storage.string, range: styledFullRange) { match, _, _ in
                 guard let match = match else { return }
 
-                // Skip if inside code block
-                for blockRange in styledCodeBlockRanges {
-                    if NSLocationInRange(match.range.location, blockRange) { return }
-                }
-
-                // Skip if inside an image range (to avoid double-processing)
-                for imgRange in imageRanges {
-                    if NSLocationInRange(match.range.location, imgRange) { return }
-                }
+                if styledCodeBlockRanges.contains(where: { NSLocationInRange(match.range.location, $0) }) { return }
+                if imageRanges.contains(where: { NSLocationInRange(match.range.location, $0) }) { return }
+                if let fm = styledFrontmatter, NSLocationInRange(match.range.location, fm) { return }
 
                 let (markers, contentRanges) = rule.analyze(match, styledString)
                 for contentRange in contentRanges {
                     storage.addAttributes(rule.contentAttributes, range: contentRange)
                 }
 
-                // Hide/fade markers
-                let isActive = NSLocationInRange(cursorLocation, match.range)
+                // Reveal markers on the caret's span; collapse them elsewhere.
+                let isActive = NSLocationInRange(inlineCursor, match.range) || inlineCursor == NSMaxRange(match.range)
                 for markerRange in markers {
                     if isActive {
-                        // Show markers at normal size when cursor is inside
-                        storage.addAttribute(.foregroundColor, value: getMarkerColor(), range: markerRange)
+                        applyMarkerStyle(storage, range: markerRange)
                     } else {
-                        // Collapse markers to near-zero width: transparent color
-                        // + tiny font size so they occupy almost no horizontal
-                        // space. This eliminates the visible gap / "indentation"
-                        // around bold, italic, code, etc.
-                        storage.addAttributes([
-                            .foregroundColor: NSColor.clear,
-                            .font: NSFont.systemFont(ofSize: 0.1),
-                        ], range: markerRange)
+                        collapse(storage, markerRange)
                     }
+                }
+
+                switch rule.kind {
+                case .plain:
+                    break
+                case .code:
+                    guard let content = contentRanges.first, content.length > 0 else { break }
+                    addPill(storage, content: content, color: MarkdownPalette.inlineBg,
+                            leadingSpacer: markers.first.map { NSRange(location: NSMaxRange($0) - 1, length: 1) })
+                case .hashtag:
+                    let range = match.range
+                    storage.addAttribute(.foregroundColor, value: MarkdownPalette.faint,
+                                         range: NSRange(location: range.location, length: 1))
+                    let before = range.location - 1
+                    let spacer = before >= 0 && styledString.character(at: before) == 0x20
+                        ? NSRange(location: before, length: 1) : nil
+                    addPill(storage, content: range, color: MarkdownPalette.inlineBg, leadingSpacer: spacer)
                 }
             }
         }
@@ -610,10 +626,222 @@ final class WysiwygEngine {
         // Math first, then tables: collapse every span except the one being
         // edited into a rendered attachment. Done after inline styling, in
         // reverse order so earlier ranges stay valid as we mutate the storage.
-        applyMath(to: storage, activeIndex: activeMathIndex, maxWidth: maxMathWidth)
-        applyTables(to: storage, activeIndex: activeTableIndex, maxWidth: maxTableWidth)
+        applyMath(to: storage, activeIndex: activeMathIndex, maxWidth: maxWidth)
+        applyTables(to: storage, activeIndex: activeTableIndex, maxWidth: maxWidth)
+
+        // The frontmatter sits at offset 0, so replacing it last leaves every
+        // range computed above valid.
+        if let frontmatter, !frontmatterActive, NSMaxRange(frontmatter.range) <= storage.length {
+            let source = (storage.string as NSString).substring(with: frontmatter.range)
+            let attachment = FrontmatterAttachment(frontmatter: frontmatter, markdownSource: source, maxWidth: maxWidth)
+            let replacement = NSMutableAttributedString(attachment: attachment)
+            replacement.addAttribute(.paragraphStyle, value: Self.paragraph(lineSpacing: 0, after: 16),
+                                     range: NSRange(location: 0, length: replacement.length))
+            storage.replaceCharacters(in: frontmatter.range, with: replacement)
+        }
 
         storage.endEditing()
+    }
+
+    private func videoAttachment(url: URL, source: String, maxWidth: CGFloat) -> VideoAttachment {
+        let key = "\(Int(maxWidth))|\(url.path)|\(source)"
+        let hasPoster = VideoPosterCache.shared.info(for: url) != nil
+        if let cached = videoCache[key], cached.hasPoster || !hasPoster { return cached.attachment }
+        let attachment = VideoAttachment(fileURL: url, markdownSource: source, maxWidth: maxWidth)
+        videoCache[key] = (attachment, hasPoster)
+        return attachment
+    }
+
+    // MARK: - Block helpers
+
+    private func calloutParagraph() -> NSParagraphStyle {
+        Self.paragraph(indent: Self.calloutTextIndent, tail: -14, lineSpacing: 5)
+    }
+
+    /// Consecutive `>` lines grouped into blocks. A block whose first line
+    /// opens with an emoji is drawn as a callout instead of a quote.
+    struct QuoteGroup: Equatable {
+        let start: Int
+        let end: Int
+        let isEmoji: Bool
+    }
+
+    static func quoteGroups(_ lines: [String]) -> [Int: QuoteGroup] {
+        var result: [Int: QuoteGroup] = [:]
+        var i = 0
+        while i < lines.count {
+            guard lines[i].trimmingCharacters(in: .whitespaces).hasPrefix(">") else { i += 1; continue }
+            var j = i
+            while j + 1 < lines.count, lines[j + 1].trimmingCharacters(in: .whitespaces).hasPrefix(">") { j += 1 }
+            let group = QuoteGroup(start: i, end: j, isEmoji: startsWithEmoji(quoteContent(of: lines[i])))
+            for k in i...j { result[k] = group }
+            i = j + 1
+        }
+        return result
+    }
+
+    /// A quote line's text after its `>` markers.
+    static func quoteContent(of line: String) -> String {
+        String(line.drop(while: { $0 == " " || $0 == "\t" || $0 == ">" }))
+    }
+
+    /// True for a pictographic first character (⚠️, ✅, 💡 …), not for digits or
+    /// `#`/`*`, which are technically emoji-capable but read as text.
+    static func startsWithEmoji(_ text: String) -> Bool {
+        guard let first = text.first, let scalar = first.unicodeScalars.first else { return false }
+        if scalar.properties.isEmojiPresentation { return true }
+        return scalar.properties.isEmoji && first.unicodeScalars.count > 1 && scalar.value > 0x7F
+    }
+
+    private static let quotePrefix = try! NSRegularExpression(pattern: #"^\s*((?:>\s?)+)"#)
+
+    private func styleQuoteLine(_ storage: NSTextStorage, line: String, lineRange: NSRange,
+                                enclosing: NSRange, asCallout: Bool, isActive: Bool) {
+        let nsLine = line as NSString
+        guard let match = Self.quotePrefix.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return }
+        let prefix = NSRange(location: lineRange.location, length: match.range.length)
+        let depth = nsLine.substring(with: match.range(at: 1)).filter { $0 == ">" }.count
+        let content = nsLine.substring(from: match.range.length)
+
+        let indent = asCallout ? 14 : Self.quoteIndent * CGFloat(depth)
+        let paragraph = asCallout
+            ? Self.paragraph(indent: indent, tail: -14, lineSpacing: 5)
+            : Self.paragraph(indent: indent, lineSpacing: style.lineSpacing * 0.8)
+        paragraph.minimumLineHeight = bodyLineHeight
+        if isActive {
+            // Live preview: the raw `> ` shows on the caret's line, hung just
+            // before the text so the text itself doesn't move.
+            paragraph.firstLineHeadIndent = max(0, indent - prefixWidth(nsLine.substring(with: match.range)))
+        }
+
+        if asCallout {
+            storage.addAttributes([.paragraphStyle: paragraph, .font: style.calloutBodyFont], range: lineRange)
+        } else {
+            storage.addAttribute(.paragraphStyle, value: paragraph, range: lineRange)
+            storage.addAttribute(.blockquoteDepth, value: depth, range: enclosing)
+            if content.hasPrefix("— ") || content.hasPrefix("——") || content.hasPrefix("-- ") {
+                storage.addAttributes([.font: style.quoteAttributionFont, .foregroundColor: MarkdownPalette.tertiary],
+                                      range: lineRange)
+            }
+        }
+        if isActive {
+            storage.addAttributes([.font: style.bodyFont, .foregroundColor: MarkdownPalette.marker], range: prefix)
+        } else {
+            collapse(storage, prefix)
+        }
+    }
+
+    private var bodyLineHeight: CGFloat {
+        ceil(style.bodyFont.ascender - style.bodyFont.descender + style.bodyFont.leading)
+    }
+
+    /// Rendered width of raw syntax shown on the caret's line.
+    private func prefixWidth(_ prefix: String) -> CGFloat {
+        ceil((prefix as NSString).size(withAttributes: [.font: style.bodyFont]).width)
+    }
+
+    private static let listPrefix = try! NSRegularExpression(pattern: #"^([ \t]*)([-*+]|\d+[.)])[ \t]+(\[[ xX]\][ \t]*)?"#)
+
+    private func styleListItem(_ storage: NSTextStorage, line: String, lineRange: NSRange, isActive: Bool) {
+        let nsLine = line as NSString
+        guard let match = Self.listPrefix.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return }
+
+        let leading = nsLine.substring(with: match.range(at: 1))
+        let columns = leading.reduce(0) { $0 + ($1 == "\t" ? 4 : 1) }
+        let level = min(columns / 2, 6)
+        let indent = Self.listIndentStep * CGFloat(level + 1)
+        let token = nsLine.substring(with: match.range(at: 2))
+        let checkboxRange = match.range(at: 3)
+
+        let kind: ListMarker.Kind
+        if checkboxRange.location != NSNotFound {
+            let box = nsLine.substring(with: checkboxRange)
+            kind = .task(checked: box.contains("x") || box.contains("X"))
+        } else if let number = Int(token.dropLast()) {
+            kind = .ordered(label: level % 2 == 1 ? Self.letterLabel(number) + "." : token)
+        } else {
+            kind = .bullet(level: level)
+        }
+
+        let paragraph = Self.paragraph(indent: indent, lineSpacing: style.lineSpacing, after: 2)
+        // An empty item is all collapsed syntax; keep it one body line tall.
+        paragraph.minimumLineHeight = bodyLineHeight
+        let prefix = NSRange(location: lineRange.location, length: match.range.length)
+        if isActive {
+            // Live preview: on the caret's line the raw `- ` / `1. ` / `- [ ] `
+            // replaces the drawn marker, hung in the marker slot so the item
+            // text stays put.
+            let raw = nsLine.substring(with: match.range).trimmingCharacters(in: .whitespaces) + " "
+            paragraph.firstLineHeadIndent = max(0, indent - prefixWidth(raw))
+            storage.addAttributes([.font: style.bodyFont, .foregroundColor: MarkdownPalette.marker], range: prefix)
+            let leading = match.range(at: 1)
+            if leading.length > 0 {
+                collapse(storage, NSRange(location: lineRange.location, length: leading.length))
+            }
+        } else {
+            collapse(storage, prefix)
+            storage.addAttribute(.listMarker,
+                                 value: ListMarker(kind: kind, indent: indent, font: style.bodyFont),
+                                 range: NSRange(location: lineRange.location, length: 1))
+        }
+        storage.addAttribute(.paragraphStyle, value: paragraph, range: lineRange)
+
+        if case .task(true) = kind, NSMaxRange(prefix) < NSMaxRange(lineRange) {
+            let text = NSRange(location: NSMaxRange(prefix), length: NSMaxRange(lineRange) - NSMaxRange(prefix))
+            storage.addAttributes(style.strikethrough, range: text)
+        }
+    }
+
+    /// 1 → "a", 26 → "z", 27 → "aa".
+    static func letterLabel(_ number: Int) -> String {
+        var n = max(1, number)
+        var result = ""
+        while n > 0 {
+            n -= 1
+            result = String(UnicodeScalar(UInt8(97 + n % 26))) + result
+            n /= 26
+        }
+        return result
+    }
+
+    /// Rounded fill behind `content`, with room made on both sides: kerning on
+    /// the character before the span (`leadingSpacer`) and on its last
+    /// character, so the pill doesn't touch neighboring text.
+    private func addPill(_ storage: NSTextStorage, content: NSRange, color: NSColor, leadingSpacer: NSRange?) {
+        storage.addAttribute(.inlinePill, value: color, range: content)
+        storage.addAttribute(.kern, value: Self.pillPadding, range: NSRange(location: NSMaxRange(content) - 1, length: 1))
+        if let spacer = leadingSpacer, spacer.location >= 0 {
+            let existing = (storage.attribute(.kern, at: spacer.location, effectiveRange: nil) as? CGFloat) ?? 0
+            storage.addAttribute(.kern, value: existing + Self.pillPadding, range: spacer)
+        }
+    }
+
+    // MARK: - Code syntax colors
+
+    private static let keywordPattern = try! NSRegularExpression(pattern: #"\b(func|let|var|if|else|for|while|return|guard|import|class|struct|enum|protocol|extension|def|function|const|true|false|nil|null|None|True|False|self|this|in|case|switch|break|continue|try|catch|throw|throws|async|await|public|private|static|new|from|as|interface|type|extends|implements|package|go|fn|pub|mut|impl|use|where|yield|lambda|with|and|or|not|elif|end|do|then|fi|echo|export|select|insert|update|delete|create|table|into|values)\b"#)
+    private static let numberPattern = try! NSRegularExpression(pattern: #"\b\d+(?:\.\d+)?\b"#)
+    private static let stringPattern = try! NSRegularExpression(pattern: #""(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'"#)
+    private static let slashComment = try! NSRegularExpression(pattern: #"//[^\n]*|/\*[\s\S]*?\*/"#)
+    private static let hashComment = try! NSRegularExpression(pattern: #"(?m)(?:^|\s)#[^\n]*"#)
+    private static let hashCommentLanguages: Set<String> = ["python", "py", "sh", "bash", "zsh", "shell", "yaml", "yml", "ruby", "rb", "toml", "r", "perl", "makefile", "dockerfile"]
+
+    /// Four quiet colors only: keywords, strings, numbers, comments.
+    private func highlightSyntax(_ storage: NSTextStorage, in range: NSRange, language: String) {
+        let string = storage.string
+        func paint(_ regex: NSRegularExpression, _ color: NSColor) {
+            regex.enumerateMatches(in: string, range: range) { match, _, _ in
+                guard let match else { return }
+                storage.addAttribute(.foregroundColor, value: color, range: match.range)
+            }
+        }
+        paint(Self.keywordPattern, MarkdownPalette.syntaxKeyword)
+        paint(Self.numberPattern, MarkdownPalette.syntaxNumber)
+        paint(Self.stringPattern, MarkdownPalette.syntaxString)
+        if Self.hashCommentLanguages.contains(language.lowercased()) {
+            paint(Self.hashComment, MarkdownPalette.faint)
+        } else {
+            paint(Self.slashComment, MarkdownPalette.faint)
+        }
     }
 
     // MARK: - Math
@@ -625,7 +853,7 @@ final class WysiwygEngine {
         guard !spans.isEmpty else { return }
 
         let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 17)
-        let color = (style.baseParagraph[.foregroundColor] as? NSColor) ?? NSColor(named: "PrimaryText") ?? .textColor
+        let color = MarkdownPalette.primary
         let mono = NSFont.monospacedSystemFont(ofSize: max(11, bodyFont.pointSize - 1), weight: .regular)
 
         for (index, span) in spans.enumerated().reversed() {
@@ -641,8 +869,8 @@ final class WysiwygEngine {
             if span.display {
                 let paragraph = NSMutableParagraphStyle()
                 paragraph.alignment = .center
-                paragraph.paragraphSpacingBefore = 6
-                paragraph.paragraphSpacing = 6
+                paragraph.paragraphSpacingBefore = 10
+                paragraph.paragraphSpacing = 10
                 replacement.addAttribute(.paragraphStyle, value: paragraph,
                                          range: NSRange(location: 0, length: replacement.length))
             }
@@ -666,7 +894,8 @@ final class WysiwygEngine {
         let tables = MarkdownTableParser.tables(in: nsString)
         guard !tables.isEmpty else { return }
 
-        let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 17)
+        let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 16)
+        let cellFont = NSFont.systemFont(ofSize: (bodyFont.pointSize * 0.875).rounded())
         let mono = NSFont.monospacedSystemFont(ofSize: max(11, bodyFont.pointSize - 1), weight: .regular)
 
         for (index, item) in tables.enumerated().reversed() {
@@ -678,7 +907,7 @@ final class WysiwygEngine {
                 continue
             }
             let source = nsString.substring(with: item.range)
-            let attachment = tableAttachment(for: item.table, source: source, font: bodyFont, maxWidth: maxWidth)
+            let attachment = tableAttachment(for: item.table, source: source, font: cellFont, maxWidth: maxWidth)
             let paragraph = NSMutableParagraphStyle()
             paragraph.paragraphSpacingBefore = 8
             paragraph.paragraphSpacing = 10
@@ -697,58 +926,24 @@ final class WysiwygEngine {
         return attachment
     }
 
-    // MARK: - Helper types
+    // MARK: - Parsing helpers
 
     private struct HeadingInfo {
         let level: Int
-        let markerRange: NSRange  // range of "# " relative to the trimmed line
+        let markerRange: NSRange  // "## " (with up to 3 leading spaces), relative to the line
     }
 
-    private struct LineMarkerInfo {
-        let markerRange: NSRange  // absolute range of the marker in the line
-    }
-
-    // MARK: - Parsing helpers
+    private static let headingPattern = try! NSRegularExpression(pattern: #"^ {0,3}(#{1,6})(?:[ \t]+|$)"#)
 
     private func parseHeading(line: String) -> HeadingInfo? {
-        let pattern = #"^(#{1,6})\s+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let nsLine = line as NSString
-        guard let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return nil }
-        let hashes = nsLine.substring(with: match.range(at: 1))
-        return HeadingInfo(level: hashes.count, markerRange: match.range)
-    }
-
-    private func headingStyleFor(level: Int) -> [NSAttributedString.Key: Any] {
-        switch level {
-        case 1: return style.heading1
-        case 2: return style.heading2
-        case 3: return style.heading3
-        case 4: return style.heading4
-        case 5: return style.heading5
-        default: return style.heading6
-        }
+        guard let match = Self.headingPattern.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return nil }
+        return HeadingInfo(level: match.range(at: 1).length, markerRange: match.range)
     }
 
     private func isHorizontalRule(_ line: String) -> Bool {
         let trimmed = line.replacingOccurrences(of: " ", with: "")
         return (trimmed == "---" || trimmed == "***" || trimmed == "___")
-    }
-
-    private func isTaskListItem(_ line: String) -> Bool {
-        return line.range(of: #"^\s*[-*+]\s+\[[ xX]\]"#, options: .regularExpression) != nil
-    }
-
-    private func isListItem(_ line: String) -> Bool {
-        return line.range(of: #"^\s*[-*+]\s+"#, options: .regularExpression) != nil ||
-               line.range(of: #"^\s*\d+[.)]\s+"#, options: .regularExpression) != nil
-    }
-
-    private func findCheckboxRange(line: String, lineRange: NSRange) -> NSRange? {
-        guard let regex = try? NSRegularExpression(pattern: #"\[[ xX]\]"#) else { return nil }
-        let nsLine = line as NSString
-        guard let match = regex.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return nil }
-        return NSRange(location: lineRange.location + match.range.location, length: match.range.length)
     }
 
     private func isRemoteImageURL(_ value: String) -> Bool {
@@ -820,143 +1015,73 @@ final class WysiwygEngine {
         return (blocks, fenceLocations)
     }
 
+
     // MARK: - Marker hiding
 
-    private func applyMarkerHiding(storage: NSTextStorage, markerRange: NSRange, lineRange: NSRange, cursorLocation: Int) {
-        let absoluteMarkerRange = NSRange(location: lineRange.location + markerRange.location, length: markerRange.length)
-        let isActive = NSLocationInRange(cursorLocation, lineRange)
-
-        if isActive {
-            storage.addAttribute(.foregroundColor, value: getMarkerColor(), range: absoluteMarkerRange)
-        } else {
-            // For headings, use faded color instead of transparent so the
-            // text doesn't shift position. Transparent text still occupies
-            // horizontal space, causing apparent indentation misalignment.
-            storage.addAttribute(.foregroundColor, value: getMarkerColor().withAlphaComponent(0.35), range: absoluteMarkerRange)
-        }
+    /// Shrinks syntax characters to (almost) zero width and makes them clear,
+    /// so the rendered text sits exactly where it would without them.
+    private func collapse(_ storage: NSTextStorage, _ range: NSRange) {
+        guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
+        storage.addAttributes([
+            .foregroundColor: NSColor.clear,
+            .font: NSFont.systemFont(ofSize: 0.1),
+        ], range: range)
     }
 
-    private func hideBlockquoteMarkers(storage: NSTextStorage, line: String, lineRange: NSRange, cursorLocation: Int) {
-        let nsLine = line as NSString
-        let pattern = try! NSRegularExpression(pattern: #">+"#)
-        let isActive = NSLocationInRange(cursorLocation, lineRange)
-
-        pattern.enumerateMatches(in: line, range: NSRange(location: 0, length: nsLine.length)) { match, _, _ in
-            guard let match = match else { return }
-            let absRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
-            if isActive {
-                storage.addAttribute(.foregroundColor, value: getMarkerColor(), range: absRange)
-            } else {
-                hideRange(storage, range: absRange)
-            }
-        }
-    }
-
-    /// Gives a list item a hanging indent so wrapped lines align under the text
-    /// rather than running back to the margin under the bullet. `headIndent` is
-    /// set to the rendered width of the "<leading whitespace><marker><space>"
-    /// prefix; the first line keeps its natural indent.
-    private func applyListHangingIndent(storage: NSTextStorage, line: String, lineRange: NSRange) {
-        let nsLine = line as NSString
-        let pattern = try! NSRegularExpression(pattern: #"^\s*([-*+]|\d+[.)])\s+"#)
-        guard let match = pattern.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return }
-
-        let prefix = nsLine.substring(with: match.range) as NSString
-        let font = (style.listItem[.font] as? NSFont) ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        let indent = prefix.size(withAttributes: [.font: font]).width
-
-        let base = (style.baseParagraph[.paragraphStyle] as? NSParagraphStyle) ?? NSParagraphStyle.default
-        let p = (base.mutableCopy() as! NSMutableParagraphStyle)
-        p.headIndent = indent
-        p.firstLineHeadIndent = 0
-        storage.addAttribute(.paragraphStyle, value: p, range: lineRange)
-    }
-
-    private func hideListMarker(storage: NSTextStorage, line: String, lineRange: NSRange, cursorLocation: Int) {
-        let nsLine = line as NSString
-        let pattern = try! NSRegularExpression(pattern: #"^\s*([-*+]|\d+[.)])\s+"#)
-        let isActive = NSLocationInRange(cursorLocation, lineRange)
-
-        guard let match = pattern.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return }
-        let tokenRange = match.range(at: 1) // the "-"/"*"/"+" or "1."/"1)" token
-        let token = nsLine.substring(with: tokenRange)
-        let isUnordered = token.count == 1
-        let absFull = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
-        let absToken = NSRange(location: lineRange.location + tokenRange.location, length: tokenRange.length)
-
-        if isActive {
-            // Reveal the raw marker (faded) while editing this line.
-            storage.addAttribute(.foregroundColor, value: getMarkerColor(), range: absFull)
-        } else if isUnordered {
-            // Hide the raw "-" and draw a real bullet glyph in its place.
-            hideRange(storage, range: absFull)
-            let bulletColor = (style.baseParagraph[.foregroundColor] as? NSColor)
-                ?? NSColor(named: "PrimaryText") ?? .textColor
-            storage.addAttribute(.listBullet, value: bulletColor, range: absToken)
-        } else {
-            // Ordered list: keep the "1." number readable instead of hiding it.
-            let numberColor = (style.baseParagraph[.foregroundColor] as? NSColor)
-                ?? NSColor(named: "PrimaryText") ?? .textColor
-            storage.addAttribute(.foregroundColor, value: numberColor, range: absFull)
-        }
-    }
-
+    /// Reveals syntax on the caret's paragraph, in the quiet marker color.
     private func applyMarkerStyle(_ storage: NSTextStorage, range: NSRange) {
-        storage.addAttribute(.foregroundColor, value: getMarkerColor(), range: range)
-    }
-
-    private func hideRange(_ storage: NSTextStorage, range: NSRange) {
-        // Hide by making the text transparent (zero alpha)
-        // The text remains in the storage so it can be shown again.
-        let transparentColor = (NSColor(named: "PrimaryText") ?? .black).withAlphaComponent(0.0)
-        storage.addAttribute(.foregroundColor, value: transparentColor, range: range)
-    }
-
-    private func getMarkerColor() -> NSColor {
-        (NSColor(named: "SecondaryText") ?? .tertiaryLabelColor).withAlphaComponent(0.5)
+        storage.addAttribute(.foregroundColor, value: MarkdownPalette.marker, range: range)
     }
 
     // MARK: - Callouts
 
-    /// Styles a callout's opening line (`::: note 类比`) as the colored title:
-    /// the `:::` marker is hidden, the rest is shown in the type color, semibold.
-    private func styleCalloutOpeningLine(_ storage: NSTextStorage, line: String, lineRange: NSRange, type: String, cursorLocation: Int) {
-        storage.addAttribute(.paragraphStyle, value: style.calloutPara, range: lineRange)
-        let color = CalloutKind(type).color
-        storage.addAttribute(.foregroundColor, value: color, range: lineRange)
-        storage.addAttribute(.font, value: NSFont.systemFont(ofSize: 14, weight: .semibold), range: lineRange)
-        // Hide the leading ::: so the title reads as the label. Show it faded
-        // only when the cursor is on the line, so it stays editable.
+    /// Styles a callout's opening line (`::: warning 标题`): the title in the
+    /// type color, with the type's icon drawn before it. `::: type` is hidden
+    /// when a title follows; with no title the type name itself is the title.
+    private func styleCalloutOpeningLine(_ storage: NSTextStorage, line: String, lineRange: NSRange, type: String, isActive: Bool) {
+        let kind = CalloutKind(type)
+        storage.addAttributes([
+            .paragraphStyle: calloutParagraph(),
+            .foregroundColor: kind.color,
+            .font: style.calloutTitleFont,
+        ], range: lineRange)
+        storage.addAttribute(.calloutIcon, value: type, range: NSRange(location: lineRange.location, length: min(1, lineRange.length)))
+
         let nsLine = line as NSString
-        if let m = try? NSRegularExpression(pattern: #"^\s*:::\s*"#),
-           let match = m.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) {
-            let absRange = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
-            if NSLocationInRange(cursorLocation, lineRange) {
-                storage.addAttribute(.foregroundColor, value: color.withAlphaComponent(0.35), range: absRange)
-            } else {
-                hideRange(storage, range: absRange)
-            }
+        let full = NSRange(location: 0, length: nsLine.length)
+        let withTitle = try! NSRegularExpression(pattern: #"^\s*:::\s*\S+\s+(?=\S)"#)
+        let bare = try! NSRegularExpression(pattern: #"^\s*:::\s*"#)
+        guard let match = withTitle.firstMatch(in: line, range: full) ?? bare.firstMatch(in: line, range: full) else { return }
+        let marker = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
+        if isActive {
+            storage.addAttribute(.foregroundColor, value: kind.color.withAlphaComponent(0.4), range: marker)
+        } else {
+            collapse(storage, marker)
         }
     }
 
     /// Adds breathing room above and below a block (code block / callout) by
-    /// bumping paragraph spacing on the adjacent lines.
-    private func addBlockSpacing(_ storage: NSTextStorage, blockStart: Int, blockRange: NSRange) {
+    /// bumping paragraph spacing on the adjacent lines; the box's own padding
+    /// extends into that space.
+    private func addBlockSpacing(_ storage: NSTextStorage, blockRange: NSRange) {
+        let spacing: CGFloat = 14
+        let blockStart = blockRange.location
         if blockStart > 0 {
             let prevLineEnd = blockStart - 1
-            if prevLineEnd >= 0, prevLineEnd < storage.length,
-               let prevPara = storage.attributes(at: prevLineEnd, effectiveRange: nil)[.paragraphStyle] as? NSParagraphStyle {
+            if prevLineEnd < storage.length,
+               let prevPara = storage.attribute(.paragraphStyle, at: prevLineEnd, effectiveRange: nil) as? NSParagraphStyle {
                 let modified = prevPara.mutableCopy() as! NSMutableParagraphStyle
-                modified.paragraphSpacing = 12
+                modified.paragraphSpacing = max(modified.paragraphSpacing, spacing)
                 storage.addAttribute(.paragraphStyle, value: modified, range: NSRange(location: prevLineEnd, length: 1))
             }
         }
-        let blockEnd = blockRange.location + blockRange.length
+        let blockEnd = NSMaxRange(blockRange) + 1
         if blockEnd < storage.length,
-           let endPara = storage.attributes(at: blockEnd, effectiveRange: nil)[.paragraphStyle] as? NSParagraphStyle {
+           let endPara = storage.attribute(.paragraphStyle, at: blockEnd, effectiveRange: nil) as? NSParagraphStyle {
             let modified = endPara.mutableCopy() as! NSMutableParagraphStyle
-            modified.paragraphSpacingBefore = 12
-            storage.addAttribute(.paragraphStyle, value: modified, range: NSRange(location: blockEnd, length: 1))
+            modified.paragraphSpacingBefore = max(modified.paragraphSpacingBefore, spacing)
+            let lineEnd = (storage.string as NSString).lineRange(for: NSRange(location: blockEnd, length: 0))
+            storage.addAttribute(.paragraphStyle, value: modified, range: lineEnd)
         }
     }
 }

@@ -132,26 +132,45 @@ final class TableAttachment: NSTextAttachment, MarkdownBackedAttachment {
 
     static func render(table: MarkdownTable, font baseFont: NSFont, maxWidth: CGFloat) -> NSImage {
         let cols = max(1, table.columnCount)
-        let headerFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
+        let headerFont = NSFont.systemFont(ofSize: baseFont.pointSize - 0.5, weight: .semibold)
+        let numberFont = NSFont.monospacedDigitSystemFont(ofSize: baseFont.pointSize, weight: .regular)
         let border: CGFloat = 1
-        let padH: CGFloat = 10
-        let padV: CGFloat = 6
+        let padH: CGFloat = 12
+        let padV: CGFloat = 8
+        let radius: CGFloat = 8
 
-        let primary = NSColor(named: "PrimaryText") ?? .textColor
-        let secondary = NSColor(named: "SecondaryText") ?? .secondaryLabelColor
-        let borderColor = NSColor(named: "BorderColor") ?? .separatorColor
-        let headerBg = (NSColor(named: "AccentColor") ?? .systemOrange).withAlphaComponent(0.06)
+        let borderColor = MarkdownPalette.tableBorder
+        let headerBg = MarkdownPalette.codeBlockBg
 
         let allRows: [[String]] = [table.headers] + table.rows
-        func font(forRow r: Int) -> NSFont { r == 0 ? headerFont : baseFont }
-        func color(forRow r: Int) -> NSColor { r == 0 ? primary : secondary }
         func cell(_ r: Int, _ c: Int) -> String { c < allRows[r].count ? allRows[r][c] : "" }
+
+        // Left-aligned columns (the parser's default for a plain `---`) whose
+        // body cells are all numbers read better right-aligned, tabular digits.
+        func isNumeric(_ s: String) -> Bool {
+            let t = s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "")
+            return !t.isEmpty && Double(t.trimmingCharacters(in: CharacterSet(charactersIn: "%$¥€+-"))) != nil
+        }
+        let numericColumn: [Bool] = (0..<cols).map { c in
+            !table.rows.isEmpty && table.rows.allSatisfy { isNumeric(c < $0.count ? $0[c] : "") }
+        }
+        func alignment(_ c: Int) -> NSTextAlignment {
+            if table.alignments.indices.contains(c) {
+                switch table.alignments[c] {
+                case .center: return .center
+                case .right: return .right
+                case .left: break
+                }
+            }
+            return numericColumn[c] ? .right : .left
+        }
+        func font(_ r: Int, _ c: Int) -> NSFont { r == 0 ? headerFont : (numericColumn[c] ? numberFont : baseFont) }
+        func color(forRow r: Int) -> NSColor { r == 0 ? MarkdownPalette.secondary : MarkdownPalette.primary }
         func textWidth(_ s: String, _ f: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: f]).width }
 
         var natural = [CGFloat](repeating: 8, count: cols)
         for r in 0..<allRows.count {
-            let f = font(forRow: r)
-            for c in 0..<cols { natural[c] = max(natural[c], textWidth(cell(r, c), f)) }
+            for c in 0..<cols { natural[c] = max(natural[c], textWidth(cell(r, c), font(r, c))) }
         }
         let chrome = border * CGFloat(cols + 1) + padH * 2 * CGFloat(cols)
         let availText = max(CGFloat(cols) * 30, maxWidth - chrome)
@@ -162,6 +181,8 @@ final class TableAttachment: NSTextAttachment, MarkdownBackedAttachment {
             colW = natural.map { max(30, floor($0 * scale)) }
         }
         let totalWidth = ceil(colW.reduce(0, +) + chrome)
+        // `colW` is each column's text width; a cell spans that plus padding.
+        let cellW = colW.map { $0 + padH * 2 }
 
         func cellHeight(_ s: String, _ width: CGFloat, _ f: NSFont) -> CGFloat {
             let attr = NSAttributedString(string: s.isEmpty ? " " : s, attributes: [.font: f])
@@ -171,59 +192,56 @@ final class TableAttachment: NSTextAttachment, MarkdownBackedAttachment {
         }
         var rowH = [CGFloat]()
         for r in 0..<allRows.count {
-            let f = font(forRow: r)
             var h: CGFloat = 0
-            for c in 0..<cols { h = max(h, cellHeight(cell(r, c), colW[c] - padH * 2, f)) }
+            for c in 0..<cols { h = max(h, cellHeight(cell(r, c), colW[c], font(r, c))) }
             rowH.append(h + padV * 2)
         }
         let totalHeight = ceil(rowH.reduce(0, +) + border * CGFloat(allRows.count + 1))
         let size = NSSize(width: max(totalWidth, 1), height: max(totalHeight, 1))
 
         return NSImage(size: size, flipped: true) { _ in
+            let outline = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: border / 2, dy: border / 2),
+                                       xRadius: radius, yRadius: radius)
+            NSGraphicsContext.saveGraphicsState()
+            outline.addClip()
+
             // Header background.
             headerBg.setFill()
             NSRect(x: 0, y: 0, width: size.width, height: rowH[0] + border).fill()
 
-            // Grid lines.
-            borderColor.setStroke()
-            let path = NSBezierPath()
-            path.lineWidth = border
-            var yc: CGFloat = border / 2
-            path.move(to: NSPoint(x: 0, y: yc)); path.line(to: NSPoint(x: size.width, y: yc))
-            yc = 0
-            for r in 0..<allRows.count {
+            // Inner grid lines (the rounded outline is stroked separately).
+            borderColor.setFill()
+            var yc: CGFloat = 0
+            for r in 0..<(allRows.count - 1) {
                 yc += rowH[r] + border
-                path.move(to: NSPoint(x: 0, y: yc - border / 2)); path.line(to: NSPoint(x: size.width, y: yc - border / 2))
+                NSRect(x: 0, y: yc, width: size.width, height: border).fill()
             }
-            var xc: CGFloat = border / 2
-            path.move(to: NSPoint(x: xc, y: 0)); path.line(to: NSPoint(x: xc, y: size.height))
-            xc = 0
-            for c in 0..<cols {
-                xc += colW[c] + border
-                path.move(to: NSPoint(x: xc - border / 2, y: 0)); path.line(to: NSPoint(x: xc - border / 2, y: size.height))
+            var xc: CGFloat = 0
+            for c in 0..<(cols - 1) {
+                xc += cellW[c] + border
+                NSRect(x: xc, y: 0, width: border, height: size.height).fill()
             }
-            path.stroke()
+            NSGraphicsContext.restoreGraphicsState()
+
+            outline.lineWidth = border
+            borderColor.setStroke()
+            outline.stroke()
 
             // Cell text.
             var rowY: CGFloat = border
             for r in 0..<allRows.count {
                 var colX: CGFloat = border
-                let f = font(forRow: r)
                 for c in 0..<cols {
                     let para = NSMutableParagraphStyle()
-                    switch (table.alignments.indices.contains(c) ? table.alignments[c] : .left) {
-                    case .left: para.alignment = .left
-                    case .center: para.alignment = .center
-                    case .right: para.alignment = .right
-                    }
+                    para.alignment = alignment(c)
                     para.lineBreakMode = .byWordWrapping
                     let attrs: [NSAttributedString.Key: Any] = [
-                        .font: f, .foregroundColor: color(forRow: r), .paragraphStyle: para,
+                        .font: font(r, c), .foregroundColor: color(forRow: r), .paragraphStyle: para,
                     ]
                     let rect = NSRect(x: colX + padH, y: rowY + padV,
-                                      width: max(1, colW[c] - padH * 2), height: rowH[r] - padV * 2)
+                                      width: max(1, colW[c]), height: rowH[r] - padV * 2)
                     (cell(r, c) as NSString).draw(in: rect, withAttributes: attrs)
-                    colX += colW[c] + border
+                    colX += cellW[c] + border
                 }
                 rowY += rowH[r] + border
             }

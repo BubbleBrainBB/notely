@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Tracks whether this launch has already auto-restored the last workspace, so
-/// only the first window does it (extra windows open empty for a new folder).
-enum WorkspaceRestore {
-    @MainActor static var didRestoreInitial = false
-}
-
 /// Shown when no workspace folder is open.
 struct FolderOpenView: View {
     @Environment(FileNoteStore.self) var store
@@ -58,23 +52,18 @@ struct FolderOpenView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.editorBg)
-        .onAppear {
-            // Auto-open the last workspace, but only for the FIRST window of the
-            // launch. Additional windows (New Window) stay empty so the user can
-            // open a DIFFERENT folder beside the first one.
-            guard !WorkspaceRestore.didRestoreInitial else { return }
-            WorkspaceRestore.didRestoreInitial = true
-            let lastPath = AppSettings.workspacePath
-            if !lastPath.isEmpty {
-                let url = URL(fileURLWithPath: lastPath)
-                if FileManager.default.fileExists(atPath: url.path) {
-                    store.openWorkspace(at: url)
-                }
-            }
-        }
     }
 
     private func openFolderPanel() {
+        guard let url = NotesFolderPanel.choose() else { return }
+        store.openWorkspace(at: url)
+    }
+}
+
+/// The "Open Notes Folder" panel, shared by the empty state, the sidebar's
+/// workspace menu and the ⌘O command.
+enum NotesFolderPanel {
+    static func choose() -> URL? {
         let panel = NSOpenPanel()
         panel.title = "Open Notes Folder"
         panel.canChooseDirectories = true
@@ -83,7 +72,7 @@ struct FolderOpenView: View {
         panel.allowsMultipleSelection = false
         panel.prompt = "Open"
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        store.openWorkspace(at: url)
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
     }
 }

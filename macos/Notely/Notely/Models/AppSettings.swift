@@ -13,6 +13,7 @@ enum AppSettings {
     static let autoUpdatesKey = "notely.autoUpdates"
     static let accentColorKey = "notely.accentColor"
     static let workspacePathKey = "notely.workspacePath"
+    /// Only read to migrate away from the removed theme presets.
     static let appThemeKey = "notely.appTheme"
     static let editorFontKey = "notely.editorFont"
     static let editorWidthKey = "notely.editorWidth"
@@ -34,7 +35,7 @@ enum AppSettings {
     }
 
     static var editorFontSize: Double {
-        get { UserDefaults.standard.object(forKey: fontSizeKey) as? Double ?? 17 }
+        get { UserDefaults.standard.object(forKey: fontSizeKey) as? Double ?? 16 }
         set { UserDefaults.standard.set(newValue, forKey: fontSizeKey) }
     }
 
@@ -69,8 +70,11 @@ enum AppSettings {
     }
 
 
+    /// The 拾页 design's blue.
+    static let defaultAccentHex = "#1D6FC2"
+
     static var accentColorHex: String {
-        get { UserDefaults.standard.string(forKey: accentColorKey) ?? "#D97706" }
+        get { UserDefaults.standard.string(forKey: accentColorKey) ?? defaultAccentHex }
         set { UserDefaults.standard.set(newValue, forKey: accentColorKey) }
     }
 
@@ -80,12 +84,6 @@ enum AppSettings {
     }
 
     // MARK: - Appearance
-
-    /// Named visual theme preset: "paper", "mineral", "bookish", "inky".
-    static var appTheme: String {
-        get { UserDefaults.standard.string(forKey: appThemeKey) ?? "paper" }
-        set { UserDefaults.standard.set(newValue, forKey: appThemeKey) }
-    }
 
     static var editorFont: String {
         get { UserDefaults.standard.string(forKey: editorFontKey) ?? "System" }
