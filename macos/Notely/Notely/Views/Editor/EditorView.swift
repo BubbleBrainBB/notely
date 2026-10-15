@@ -14,8 +14,11 @@ struct EditorView: View {
     @AppStorage("notely.editorFont") private var editorFontName: String = "System"
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
     @AppStorage("notely.editorLineHeight") private var editorLineHeight: Double = 1.7
+    @AppStorage(AppSettings.fontSizeKey) private var editorFontSize = AppSettings.defaultEditorFontSize
+    @AppStorage(AppSettings.spellCheckKey) private var spellCheck = AppSettings.defaultSpellCheck
+    @AppStorage(AppSettings.smartPunctuationKey) private var smartPunctuation = AppSettings.defaultSmartPunctuation
 
-    private var fontSize: CGFloat { CGFloat(AppSettings.editorFontSize) }
+    private var fontSize: CGFloat { CGFloat(editorFontSize) }
     private var lineHeight: CGFloat { CGFloat(editorLineHeight) }
     private var fontName: String { editorFontName }
 
@@ -50,6 +53,8 @@ struct EditorView: View {
                     lineHeight: lineHeight,
                     fontName: fontName,
                     editorWidth: editorWidth,
+                    spellCheck: spellCheck,
+                    smartPunctuation: smartPunctuation,
                     onTextChange: handleTextChange
                 )
                 .frame(maxWidth: .infinity)
@@ -163,7 +168,11 @@ struct NoteToolbar: ViewModifier {
                     Button {
                         appModel.openNote(store.createNote()?.id)
                     } label: {
-                        Label("New Note", systemImage: "square.and.pencil")
+                        Label {
+                            Text("New Note")
+                        } icon: {
+                            Image(nsImage: ShiyeGlyph.newNote.templateImage())
+                        }
                     }
                     .help("New Note (⌘N)")
 

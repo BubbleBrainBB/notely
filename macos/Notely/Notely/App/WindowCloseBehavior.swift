@@ -30,6 +30,12 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
     static let shared = WindowCloseController()
 
     private let hiddenWindows = NSHashTable<NSWindow>.weakObjects()
+    /// Windows already seen. `attach` runs again on every SwiftUI update of the
+    /// window's root; only the first call may decide anything — otherwise the
+    /// primary window of a first launch (no folder yet, so "empty") was taken
+    /// for a stray restored window on its next update and closed, leaving the
+    /// app with no window at all.
+    private let attachedWindows = NSHashTable<NSWindow>.weakObjects()
     private var suppressEmptyWindowsUntil: Date?
     private var isDiscardingWindow = false
     /// The first window of a fresh launch becomes the primary: it restores the
@@ -41,6 +47,8 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
     }
 
     func attach(to window: NSWindow, store: FileNoteStore) {
+        guard !attachedWindows.contains(window) else { return }
+        attachedWindows.add(window)
         window.delegate = self
         // Opt every window out of cross-launch state restoration so macOS does
         // not resurrect extra empty windows the next time the app launches.

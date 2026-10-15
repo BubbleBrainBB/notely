@@ -34,8 +34,10 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: themeKey) }
     }
 
+    static let defaultEditorFontSize: Double = 16
+
     static var editorFontSize: Double {
-        get { UserDefaults.standard.object(forKey: fontSizeKey) as? Double ?? 16 }
+        get { UserDefaults.standard.object(forKey: fontSizeKey) as? Double ?? defaultEditorFontSize }
         set { UserDefaults.standard.set(newValue, forKey: fontSizeKey) }
     }
 
@@ -98,8 +100,13 @@ enum AppSettings {
 
     // MARK: - Editor behavior
 
+    /// Off by default, as NSTextView ships: Markdown syntax and mixed
+    /// Chinese / English text draw a lot of false underlines.
+    static let defaultSpellCheck = false
+    static let defaultSmartPunctuation = false
+
     static var spellCheck: Bool {
-        get { UserDefaults.standard.object(forKey: spellCheckKey) as? Bool ?? true }
+        get { UserDefaults.standard.object(forKey: spellCheckKey) as? Bool ?? defaultSpellCheck }
         set { UserDefaults.standard.set(newValue, forKey: spellCheckKey) }
     }
 
@@ -109,7 +116,7 @@ enum AppSettings {
     }
 
     static var smartPunctuation: Bool {
-        get { UserDefaults.standard.object(forKey: smartPunctuationKey) as? Bool ?? true }
+        get { UserDefaults.standard.object(forKey: smartPunctuationKey) as? Bool ?? defaultSmartPunctuation }
         set { UserDefaults.standard.set(newValue, forKey: smartPunctuationKey) }
     }
 

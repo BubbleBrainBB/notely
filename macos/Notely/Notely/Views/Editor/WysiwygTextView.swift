@@ -68,7 +68,20 @@ struct WysiwygEditor: NSViewRepresentable {
     let lineHeight: CGFloat
     let fontName: String
     let editorWidth: String
+    var spellCheck = AppSettings.defaultSpellCheck
+    var smartPunctuation = AppSettings.defaultSmartPunctuation
     let onTextChange: (String) -> Void
+
+    /// Settings › Editor. Set only on change: assigning restarts the checker.
+    static func applyTypingOptions(_ textView: NSTextView, spellCheck: Bool, smartPunctuation: Bool) {
+        if textView.isContinuousSpellCheckingEnabled != spellCheck {
+            textView.isContinuousSpellCheckingEnabled = spellCheck
+        }
+        if textView.isAutomaticQuoteSubstitutionEnabled != smartPunctuation {
+            textView.isAutomaticQuoteSubstitutionEnabled = smartPunctuation
+            textView.isAutomaticDashSubstitutionEnabled = smartPunctuation
+        }
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = EditorScrollView()
@@ -96,6 +109,7 @@ struct WysiwygEditor: NSViewRepresentable {
         textView.lineHeight = lineHeight
         textView.fontName = fontName
         textView.editorWidth = editorWidth
+        Self.applyTypingOptions(textView, spellCheck: spellCheck, smartPunctuation: smartPunctuation)
         textView.delegate = context.coordinator
         textView.onTextChange = { newText in
             context.coordinator.lastKnownText = newText
@@ -115,6 +129,7 @@ struct WysiwygEditor: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? WysiwygTextView else { return }
+        Self.applyTypingOptions(textView, spellCheck: spellCheck, smartPunctuation: smartPunctuation)
 
         // Re-bind the text-change callback to the CURRENT note's EditorView. The
         // Coordinator is created once (makeCoordinator), so without this a reused
@@ -650,12 +665,60 @@ final class WysiwygTextView: NSTextView {
 
     // MARK: - Mouse / cursor tracking
 
+    /// Moving the caret with the keyboard re-renders too, so the syntax of the
+    /// line it lands on (an image's source, a heading's `##`) is revealed the
+    /// same way a click reveals it.
+    override func keyDown(with event: NSEvent) {
+        let before = selectedRange()
+        super.keyDown(with: event)
+        let navigationKeys: Set<NSEvent.SpecialKey> = [.upArrow, .downArrow, .leftArrow, .rightArrow,
+                                                       .home, .end, .pageUp, .pageDown]
+        guard let key = event.specialKey, navigationKeys.contains(key),
+              !event.modifierFlags.contains(.shift), let storage = textStorage else { return }
+        var after = selectedRange()
+        guard after.length == 0 else { return }
+
+        // A revealed image follows its source but stands for no raw text, so
+        // both of its edges map back to the end of the source. Moving forward
+        // from there steps over it (and its line break) to the next line.
+        func revealedImage(at index: Int) -> Bool {
+            guard index >= 0, index < storage.length,
+                  let attachment = storage.attribute(.attachment, at: index, effectiveRange: nil)
+                      as? MarkdownBackedAttachment else { return false }
+            return attachment.markdownSource.isEmpty
+        }
+        // Right arrow: from just before the image. Down arrow: from anywhere
+        // on its source line, landing on either edge of the image.
+        let image: Int? = switch key {
+        case .rightArrow where revealedImage(at: before.location) && after.location <= before.location + 1:
+            before.location
+        case .downArrow where revealedImage(at: after.location) && after.location >= before.location:
+            after.location
+        case .downArrow where revealedImage(at: after.location - 1) && after.location > before.location:
+            after.location - 1
+        default:
+            nil
+        }
+        if let image {
+            var next = image + 1
+            if next < storage.length, (storage.string as NSString).character(at: next) == 0x0A {
+                next += 1
+            }
+            after = NSRange(location: next, length: 0)
+            setSelectedRange(after)
+        }
+        if after != before {
+            restyle()
+        }
+    }
+
     override func mouseDown(with event: NSEvent) {
         if let window = window, window.firstResponder != self {
             window.makeFirstResponder(self)
         }
         if toggleTaskIfCheckboxClicked(event) { return }
         if playVideoIfClicked(event) { return }
+        if revealImageSourceIfClicked(event) { return }
         super.mouseDown(with: event)
         // A simple click (no drag-selection): re-render so the table the caret
         // landed in opens as editable source, and the one it left re-renders as a
@@ -729,6 +792,32 @@ final class WysiwygTextView: NSTextView {
         addSubview(playerView)
         videoPlayers[id] = (attachment, playerView)
         playerView.player?.play()
+        return true
+    }
+
+    /// A click on an image puts the caret at the end of its Markdown source
+    /// (restyle then shows the source above the image, as in Obsidian's live
+    /// preview) instead of selecting the attachment character — which tinted
+    /// the whole image with the selection color.
+    private func revealImageSourceIfClicked(_ event: NSEvent) -> Bool {
+        guard event.clickCount == 1, !event.modifierFlags.contains(.shift),
+              let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else { return false }
+        let point = convert(event.locationInWindow, from: nil)
+        let containerPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let glyphIndex = layoutManager.glyphIndex(for: containerPoint, in: textContainer)
+        let charIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        guard charIndex < storage.length,
+              let attachment = storage.attribute(.attachment, at: charIndex, effectiveRange: nil) as? ImageTextAttachment
+        else { return false }
+        let rect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyphIndex, length: 1), in: textContainer)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        guard rect.contains(point) else { return false }
+
+        // A collapsed image stands for its whole source, so "after it" is the
+        // source's end; a revealed one follows its source, so "before it" is.
+        let caret = attachment.markdownSource.isEmpty ? charIndex : charIndex + 1
+        setSelectedRange(NSRange(location: caret, length: 0))
+        restyle()
         return true
     }
 

@@ -17,13 +17,24 @@ struct WysiwygInlineRule {
 /// in the same ink, quiet markers, tinted blocks.
 struct MarkdownStyle {
     let fontSize: CGFloat
-    let lineSpacing: CGFloat
+    /// Fixed height of a body line (font size × the line-height setting).
+    /// Every body line gets exactly this, whether it holds CJK or Latin text,
+    /// so mixed paragraphs keep an even rhythm (board ⑲ ①).
+    let lineHeight: CGFloat
     let bodyFont: NSFont
+    /// Pairs the body family with a matching CJK face when the family is
+    /// Latin-only (New York → Songti SC, Helvetica → PingFang SC …), the
+    /// native take on css-composite-font's `unicode-range` dispatch. Inactive
+    /// for System / SF Mono / families that already cover Han, where the
+    /// system cascade already pairs the two scripts.
+    let compositeFont: CompositeFont
 
     let baseParagraph: [NSAttributedString.Key: Any]
-    /// Empty lines: one body-size line with no extra spacing, so a blank line
-    /// between paragraphs reads as a paragraph gap rather than a full line.
+    /// The first empty line after a paragraph: a fixed gap, so one blank
+    /// line or three read the same (board ⑲ ⑤).
     let blankLineParagraph: NSParagraphStyle
+    /// Further empty lines in the same run: (almost) no height.
+    let extraBlankLineParagraph: NSParagraphStyle
 
     /// The note's first `#` heading, shown as its title.
     let title: [NSAttributedString.Key: Any]
@@ -112,13 +123,18 @@ final class WysiwygEngine {
         }
     }
 
-    static func paragraph(indent: CGFloat = 0, tail: CGFloat = 0, lineSpacing: CGFloat,
+    static func paragraph(indent: CGFloat = 0, tail: CGFloat = 0, lineSpacing: CGFloat = 0,
+                          lineHeight: CGFloat? = nil,
                           before: CGFloat = 0, after: CGFloat = 0) -> NSMutableParagraphStyle {
         let p = NSMutableParagraphStyle()
         p.firstLineHeadIndent = indent
         p.headIndent = indent
         p.tailIndent = tail
         p.lineSpacing = lineSpacing
+        if let lineHeight {
+            p.minimumLineHeight = lineHeight
+            p.maximumLineHeight = lineHeight
+        }
         p.paragraphSpacingBefore = before
         p.paragraphSpacing = after
         return p
@@ -126,7 +142,7 @@ final class WysiwygEngine {
 
     static func makeStyle(fontSize: CGFloat = 16, lineHeight: CGFloat = 1.75, fontName: String = "System") -> MarkdownStyle {
         let ink = MarkdownPalette.primary
-        let lineSpacing = fontSize * (lineHeight - 1.0)
+        let bodyLineHeight = (fontSize * lineHeight).rounded()
 
         // Body typeface follows the user's Editor Font choice. Bold/italic are
         // derived from the same family so they stay consistent.
@@ -136,8 +152,11 @@ final class WysiwygEngine {
         let boldItalicFont = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
 
         let blank = NSMutableParagraphStyle()
-        blank.minimumLineHeight = fontSize
-        blank.maximumLineHeight = fontSize
+        blank.minimumLineHeight = 14
+        blank.maximumLineHeight = 14
+        let extraBlank = NSMutableParagraphStyle()
+        extraBlank.minimumLineHeight = 0.1
+        extraBlank.maximumLineHeight = 0.1
 
         func heading(size: CGFloat, weight: NSFont.Weight, before: CGFloat, after: CGFloat,
                      color: NSColor = ink) -> [NSAttributedString.Key: Any] {
@@ -152,18 +171,22 @@ final class WysiwygEngine {
 
         return MarkdownStyle(
             fontSize: fontSize,
-            lineSpacing: lineSpacing,
+            lineHeight: bodyLineHeight,
             bodyFont: bodyFont,
+            compositeFont: CompositeFont(baseFont: bodyFont, familyName: fontName),
             baseParagraph: [
                 .font: bodyFont,
                 .foregroundColor: ink,
-                .paragraphStyle: paragraph(lineSpacing: lineSpacing),
+                .paragraphStyle: paragraph(lineHeight: bodyLineHeight),
             ],
             blankLineParagraph: blank,
-            title: heading(size: 32, weight: .bold, before: 0, after: 12),
+            extraBlankLineParagraph: extraBlank,
+            // PingFang's Bold reads heavy in Chinese headings: Semibold, a
+            // touch smaller, sitting closer to its paragraph (board ⑲ ④).
+            title: heading(size: 30, weight: .semibold, before: 0, after: 10),
             headings: [
-                heading(size: 26, weight: .bold, before: 24, after: 8),
-                heading(size: 22, weight: .bold, before: 16, after: 6),
+                heading(size: 26, weight: .semibold, before: 24, after: 8),
+                heading(size: 21, weight: .semibold, before: 16, after: 8),
                 heading(size: 18, weight: .semibold, before: 12, after: 4),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
@@ -348,6 +371,10 @@ final class WysiwygEngine {
 
         // The first heading before any other content is the note's title.
         var seenContent = false
+        // Inside a run of empty lines (only the first one keeps its height),
+        // or right under a heading (whose own spacing already does the job).
+        var previousLineBlank = false
+        var previousLineHeading = false
         // Code blocks and callouts get extra space around them, applied after
         // the loop so the neighbors' own paragraph styles don't overwrite it.
         var spacedBlocks: [NSRange] = []
@@ -438,14 +465,23 @@ final class WysiwygEngine {
             }
 
             if trimmed.isEmpty {
-                storage.addAttribute(.paragraphStyle, value: style.blankLineParagraph, range: line.enclosing)
+                // The caret's blank line keeps a full body line so it can be
+                // typed into; other runs collapse to one fixed gap.
+                let paragraph: NSParagraphStyle = isActive
+                    ? Self.paragraph(lineHeight: style.lineHeight)
+                    : (previousLineBlank || previousLineHeading ? style.extraBlankLineParagraph : style.blankLineParagraph)
+                storage.addAttribute(.paragraphStyle, value: paragraph, range: line.enclosing)
+                previousLineBlank = true
                 continue
             }
+            previousLineBlank = false
+            previousLineHeading = false
 
             // Headings
             if let heading = parseHeading(line: line.text) {
                 let isTitle = heading.level == 1 && !seenContent
                 seenContent = true
+                previousLineHeading = true
                 let attrs = isTitle ? style.title : style.headings[heading.level - 1]
                 storage.addAttributes(attrs, range: lineRange)
                 let marker = NSRange(location: lineRange.location + heading.markerRange.location,
@@ -482,7 +518,7 @@ final class WysiwygEngine {
                     storage.addAttribute(.horizontalRule, value: true, range: lineRange)
                 }
                 storage.addAttribute(.paragraphStyle,
-                                     value: Self.paragraph(lineSpacing: style.lineSpacing, before: 4, after: 4),
+                                     value: Self.paragraph(lineHeight: style.lineHeight, before: 4, after: 4),
                                      range: lineRange)
                 continue
             }
@@ -497,23 +533,32 @@ final class WysiwygEngine {
 
         // Collapse images and Obsidian embeds (`![](…)`, `![[…]]`) into
         // attachments: loaded images, and local videos as poster cards.
-        var replacements: [(range: NSRange, attachment: NSTextAttachment)] = []
+        // Live preview: while the caret touches one, its source stays visible
+        // and the image is shown on the line below it instead of replacing it.
+        // That attachment has an empty `markdownSource`, so it adds nothing to
+        // the raw document.
+        var replacements: [(range: NSRange, attachment: NSTextAttachment, revealed: Bool)] = []
         func isInCode(_ location: Int) -> Bool {
             codeBlockRanges.contains(where: { NSLocationInRange(location, $0) })
+        }
+        func touchesCaret(_ range: NSRange) -> Bool {
+            cursorLocation >= range.location && cursorLocation <= NSMaxRange(range)
         }
         if let imageRule = inlineRules.first {
             imageRule.pattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
                 guard let match, !isInCode(match.range.location) else { return }
                 let urlString = nsString.substring(with: match.range(at: 2))
-                let markdown = nsString.substring(with: match.range)
+                let revealed = touchesCaret(match.range)
+                let markdown = revealed ? "" : nsString.substring(with: match.range)
                 let alt = nsString.substring(with: match.range(at: 1))
 
                 if VideoFile.isVideo(urlString), !isRemoteImageURL(urlString),
                    let url = ImageLoader.shared.resolveEmbed(urlString) {
-                    replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth)))
+                    replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth), revealed))
                 } else if let content = ImageLoader.shared.loadSync(urlString: urlString) {
                     replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
-                                                                          caption: alt, maxWidth: maxWidth)))
+                                                                          caption: alt, maxWidth: maxWidth,
+                                                                          fillsLine: revealed), revealed))
                 } else if isRemoteImageURL(urlString) {
                     ImageLoader.shared.loadAsync(urlString: urlString) { image in
                         if image != nil {
@@ -526,36 +571,48 @@ final class WysiwygEngine {
         Self.embedPattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
             guard let match, !isInCode(match.range.location) else { return }
             let target = nsString.substring(with: match.range(at: 1))
-            let markdown = nsString.substring(with: match.range)
+            let revealed = touchesCaret(match.range)
+            let markdown = revealed ? "" : nsString.substring(with: match.range)
             guard let url = ImageLoader.shared.resolveEmbed(target) else { return }
             if VideoFile.isVideo(url.path) {
-                replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth)))
+                replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth), revealed))
             } else if let content = ImageLoader.shared.loadSync(urlString: url.path) {
                 replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
-                                                                      maxWidth: maxWidth)))
+                                                                      maxWidth: maxWidth, fillsLine: revealed), revealed))
             }
         }
         replacements.sort { $0.range.location < $1.range.location }
 
         // Inline styling below runs on the collapsed text, so map the caret
-        // into it: each attachment before the caret shortens the text by its
-        // source length minus one.
+        // into it: each collapsed attachment before the caret shortens the text
+        // by its source length minus one; a revealed one before it adds one.
         var inlineCursor = cursorLocation
         for item in replacements {
-            if NSMaxRange(item.range) <= cursorLocation {
+            if item.revealed {
+                if NSMaxRange(item.range) < cursorLocation { inlineCursor += 1 }
+            } else if NSMaxRange(item.range) <= cursorLocation {
                 inlineCursor -= item.range.length - 1
             } else if item.range.location < cursorLocation {
                 inlineCursor -= cursorLocation - item.range.location
             }
         }
 
+        let revealedParagraph = Self.paragraph(lineSpacing: 10, before: 8, after: 8)
         for item in replacements.reversed() {
             let replacement = NSMutableAttributedString(attachment: item.attachment)
             replacement.addAttributes(style.baseParagraph, range: NSRange(location: 0, length: replacement.length))
             replacement.addAttribute(.paragraphStyle,
-                                     value: Self.paragraph(lineSpacing: 4, before: 8, after: 8),
+                                     value: item.revealed ? revealedParagraph : Self.paragraph(lineSpacing: 4, before: 8, after: 8),
                                      range: NSRange(location: 0, length: replacement.length))
-            storage.replaceCharacters(in: item.range, with: replacement)
+            if item.revealed {
+                // Source in the quiet syntax color, then the image.
+                storage.addAttribute(.foregroundColor, value: MarkdownPalette.faint, range: item.range)
+                storage.insert(replacement, at: NSMaxRange(item.range))
+                let line = (storage.string as NSString).lineRange(for: item.range)
+                storage.addAttribute(.paragraphStyle, value: revealedParagraph, range: line)
+            } else {
+                storage.replaceCharacters(in: item.range, with: replacement)
+            }
         }
 
         let styledFullRange = NSRange(location: 0, length: storage.length)
@@ -623,6 +680,14 @@ final class WysiwygEngine {
             }
         }
 
+        // Composite fonts last: every run now carries its final size and
+        // weight, so CJK characters can be re-set in the paired face without
+        // disturbing bold, headings, callouts, hashtags or inline code. The
+        // pass skips collapsed syntax, monospaced runs and attachments.
+        style.compositeFont.apply(to: storage)
+
+        applyCJKSpacing(storage, codeBlocks: styledCodeBlockRanges)
+
         // Math first, then tables: collapse every span except the one being
         // edited into a rendered attachment. Done after inline styling, in
         // reverse order so earlier ranges stay valid as we mutate the storage.
@@ -654,8 +719,13 @@ final class WysiwygEngine {
 
     // MARK: - Block helpers
 
+    /// Callout bodies are a size smaller; keep the same rhythm ratio.
+    private var calloutLineHeight: CGFloat {
+        (style.lineHeight * (style.fontSize - 1) / style.fontSize).rounded()
+    }
+
     private func calloutParagraph() -> NSParagraphStyle {
-        Self.paragraph(indent: Self.calloutTextIndent, tail: -14, lineSpacing: 5)
+        Self.paragraph(indent: Self.calloutTextIndent, tail: -14, lineHeight: calloutLineHeight)
     }
 
     /// Consecutive `>` lines grouped into blocks. A block whose first line
@@ -705,8 +775,8 @@ final class WysiwygEngine {
 
         let indent = asCallout ? 14 : Self.quoteIndent * CGFloat(depth)
         let paragraph = asCallout
-            ? Self.paragraph(indent: indent, tail: -14, lineSpacing: 5)
-            : Self.paragraph(indent: indent, lineSpacing: style.lineSpacing * 0.8)
+            ? Self.paragraph(indent: indent, tail: -14, lineHeight: calloutLineHeight)
+            : Self.paragraph(indent: indent, lineHeight: style.lineHeight)
         paragraph.minimumLineHeight = bodyLineHeight
         if isActive {
             // Live preview: the raw `> ` shows on the caret's line, hung just
@@ -763,7 +833,7 @@ final class WysiwygEngine {
             kind = .bullet(level: level)
         }
 
-        let paragraph = Self.paragraph(indent: indent, lineSpacing: style.lineSpacing, after: 2)
+        let paragraph = Self.paragraph(indent: indent, lineHeight: style.lineHeight, after: 2)
         // An empty item is all collapsed syntax; keep it one body line tall.
         paragraph.minimumLineHeight = bodyLineHeight
         let prefix = NSRange(location: lineRange.location, length: match.range.length)
@@ -813,6 +883,55 @@ final class WysiwygEngine {
         if let spacer = leadingSpacer, spacer.location >= 0 {
             let existing = (storage.attribute(.kern, at: spacer.location, effectiveRange: nil) as? CGFloat) ?? 0
             storage.addAttribute(.kern, value: existing + Self.pillPadding, range: spacer)
+        }
+    }
+
+    // MARK: - CJK / Latin spacing (board ⑲ ②③)
+
+    /// Display-only spacing for Chinese text: a gap of about ¼ em where Han
+    /// characters meet Latin letters or digits ("用 WorkBuddy 做"), and a hair
+    /// of tracking on Han characters. Done with kerning, so the file never
+    /// gets spaces inserted. Collapsed syntax and code are skipped over.
+    private func applyCJKSpacing(_ storage: NSTextStorage, codeBlocks: [NSRange]) {
+        let string = storage.string as NSString
+        let length = string.length
+        guard length > 1 else { return }
+        let boundaryGap = (style.fontSize * 0.22).rounded()
+
+        enum Kind { case han, latin, other }
+        func kind(_ c: unichar) -> Kind {
+            switch c {
+            case 0x4E00...0x9FFF, 0x3400...0x4DBF, 0xF900...0xFAFF: return .han
+            case 0x30...0x39, 0x41...0x5A, 0x61...0x7A: return .latin
+            default: return .other
+            }
+        }
+        func isHidden(_ i: Int) -> Bool {
+            guard let font = storage.attribute(.font, at: i, effectiveRange: nil) as? NSFont else { return false }
+            return font.pointSize < 1 || font.isFixedPitch
+        }
+        func addKern(_ value: CGFloat, at i: Int) {
+            let existing = (storage.attribute(.kern, at: i, effectiveRange: nil) as? CGFloat) ?? 0
+            storage.addAttribute(.kern, value: existing + value, range: NSRange(location: i, length: 1))
+        }
+
+        var codeIndex = 0
+        var previous: (index: Int, kind: Kind)? = nil
+        for i in 0..<length {
+            while codeIndex < codeBlocks.count, NSMaxRange(codeBlocks[codeIndex]) <= i { codeIndex += 1 }
+            if codeIndex < codeBlocks.count, NSLocationInRange(i, codeBlocks[codeIndex]) {
+                previous = nil
+                continue
+            }
+            let c = string.character(at: i)
+            if c == 0x0A || c == 0x2028 || c == 0x2029 { previous = nil; continue }
+            if isHidden(i) { continue }
+            let k = kind(c)
+            if let prev = previous,
+               (prev.kind == .han && k == .latin) || (prev.kind == .latin && k == .han) {
+                addKern(boundaryGap, at: prev.index)
+            }
+            previous = (i, k)
         }
     }
 

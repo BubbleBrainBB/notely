@@ -23,6 +23,8 @@ struct NotelyApp: App {
         // A standard unified toolbar window, so macOS 26+ draws the native
         // Liquid Glass toolbar and floating sidebar.
         .windowToolbarStyle(.unified)
+        // A fresh install's first window; later launches restore the last size.
+        .defaultSize(width: 1200, height: 800)
         .commands { AppCommands() }
     }
 }
@@ -98,13 +100,26 @@ struct AppCommands: Commands {
             .keyboardShortcut("o", modifiers: .command)
         }
 
+        CommandGroup(after: .importExport) {
+            Button("Export All Notes…") {
+                guard let store else { return }
+                NoteExporter.exportAll(store.notes)
+            }
+            .disabled(store == nil)
+        }
+
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { appModel?.showSettings = true }
+                .keyboardShortcut(",", modifiers: .command)
+                .disabled(appModel == nil)
+        }
+
         CommandGroup(replacing: .sidebar) {
             Button("Toggle Sidebar") { appModel?.toggleSidebar() }
                 .keyboardShortcut("s", modifiers: [.command, .option])
             Button("Search Notes") {
                 guard let appModel else { return }
-                if !appModel.isSidebarVisible { appModel.toggleSidebar() }
-                NotificationCenter.default.post(name: .focusNoteSearch, object: nil)
+                appModel.presentSearch()
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
             Divider()
@@ -144,5 +159,4 @@ extension Notification.Name {
     static let formatItalic = Notification.Name("notely.formatItalic")
     static let formatLink = Notification.Name("notely.formatLink")
     static let toggleTodo = Notification.Name("notely.toggleTodo")
-    static let focusNoteSearch = Notification.Name("notely.focusNoteSearch")
 }

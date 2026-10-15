@@ -112,6 +112,22 @@ do {
     }
 }
 
+// MARK: - revealed image (source shown as text, image after it with no raw text)
+
+// display: [source text][img][\n][X] -> raw: source + "\nX". Both edges of the
+// image map to the end of the source, which maps back to before the image —
+// so the caret sits at the end of the visible source, not past the image.
+do {
+    let segs = [Seg.text(imgLen), Seg.attachment(rawLength: 0), Seg.text(2)]
+    let total = imgLen + 1 + 2
+    expect(CursorMapping.rawLocation(forDisplayLocation: imgLen + 1, segments: segs), imgLen,
+           "after a revealed image is still the end of its source")
+    expect(CursorMapping.displayLocation(forRawLocation: imgLen, segments: segs, displayTotal: total), imgLen,
+           "end of a revealed source lands before its image")
+    expect(CursorMapping.displayLocation(forRawLocation: imgLen + 1, segments: segs, displayTotal: total), imgLen + 2,
+           "the next line skips over the revealed image")
+}
+
         if failures == 0 {
             print("OK — all \(checks) CursorMapping checks passed")
             exit(0)

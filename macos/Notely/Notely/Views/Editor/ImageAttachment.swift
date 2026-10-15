@@ -22,11 +22,18 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
     private let frames: [AnimatedImageFrame]
     private var currentFrameIndex = 0
     private var animationTimer: Timer?
+    /// The animated image's display width; the bounds are wider when the
+    /// attachment fills the line (see `fillsLine`).
+    private var frameWidth: CGFloat = 0
 
     static let cornerRadius: CGFloat = 8
     static let captionHeight: CGFloat = 26
 
-    init(content: LoadedMarkdownImage, markdownSource: String, caption: String = "", maxWidth: CGFloat = 680) {
+    /// - Parameter fillsLine: Reserve the full column width so the image never
+    ///   shares a line with text — used while its source is revealed in front
+    ///   of it (live preview), so the image always starts on the next line.
+    init(content: LoadedMarkdownImage, markdownSource: String, caption: String = "", maxWidth: CGFloat = 680,
+         fillsLine: Bool = false) {
         self.markdownSource = markdownSource
         // Images are already downsampled at decode time (off the main thread via
         // ImageIO), so attachment creation only computes display bounds — no
@@ -35,8 +42,11 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
         super.init(data: nil, ofType: nil)
 
         if content.isAnimated {
+            let size = Self.displaySize(for: frames.first?.image.size ?? .zero, maxWidth: maxWidth)
+            frameWidth = size.width
             image = frames.first?.image
-            bounds = NSRect(origin: .zero, size: Self.displaySize(for: frames.first?.image.size ?? .zero, maxWidth: maxWidth))
+            bounds = NSRect(origin: .zero, size: NSSize(width: fillsLine ? max(size.width, maxWidth) : size.width,
+                                                        height: size.height))
             startAnimation()
         } else {
             // Static images are wrapped in a lazily drawn image that clips to
@@ -44,7 +54,8 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
             let size = Self.displaySize(for: content.image.size, maxWidth: maxWidth)
             let caption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
             let source = content.image
-            let total = NSSize(width: size.width, height: size.height + (caption.isEmpty ? 0 : Self.captionHeight))
+            let total = NSSize(width: fillsLine ? max(size.width, maxWidth) : size.width,
+                               height: size.height + (caption.isEmpty ? 0 : Self.captionHeight))
             image = NSImage(size: total, flipped: true) { _ in
                 let imageRect = NSRect(origin: .zero, size: size)
                 NSGraphicsContext.saveGraphicsState()
@@ -83,7 +94,15 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
         characterIndex charIndex: Int
     ) -> NSImage? {
         if frames.count > 1 {
-            return frames[currentFrameIndex].image
+            let frame = frames[currentFrameIndex].image
+            guard imageBounds.width > frameWidth + 0.5 else { return frame }
+            // Filling the line: draw the frame at its own size on the left.
+            let frameWidth = frameWidth
+            return NSImage(size: imageBounds.size, flipped: true) { _ in
+                frame.draw(in: NSRect(x: 0, y: 0, width: frameWidth, height: imageBounds.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                return true
+            }
         }
         return super.image(forBounds: imageBounds, textContainer: textContainer, characterIndex: charIndex)
     }

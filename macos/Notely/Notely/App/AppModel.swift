@@ -5,8 +5,9 @@ import SwiftUI
 @Observable
 final class AppModel {
     var selectedNoteId: String? = nil
-    /// Sidebar search query. A leading `#` filters by tag instead of text.
-    var searchText: String = ""
+    /// True while the Spotlight-style quick search popover is open
+    /// (⇧⌘F, the sidebar's search row, or the rail's search button).
+    var isSearchPresented: Bool = false
     var sortMode: SortMode = SortMode(rawValue: AppSettings.sortMode) ?? .updatedDesc
     var showSettings: Bool = false
     /// Bound to the split view, so the system sidebar toggle in the window
@@ -29,5 +30,10 @@ final class AppModel {
     func openNote(_ id: String?) {
         showSettings = false
         selectedNoteId = id
+        isSearchPresented = false
     }
+
+    func presentSearch() { isSearchPresented = true }
+
+    func dismissSearch() { isSearchPresented = false }
 }

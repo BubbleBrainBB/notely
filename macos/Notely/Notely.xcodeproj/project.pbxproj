@@ -17,6 +17,7 @@
 		2577B1CBF8791056FAE47ECF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B580DFD3B4507EAAC4C0DB97 /* SettingsView.swift */; };
 		33D9DA3D8962040517AE5746 /* FolderOpenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC832FB4A06344B92E957336 /* FolderOpenView.swift */; };
 		402621765996F526DB134691 /* WysiwygEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */; };
+		C0FFEE0017A7000000000002 /* CompositeFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE0017A7000000000001 /* CompositeFont.swift */; };
 		73E9A7FD99DEA3EC14C4B6A8 /* TagExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CA4E783C0848DB5608663A /* TagExtractor.swift */; };
 		76A92C439DECF23CAC694D84 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6F0797BF320978F6417590 /* AppShellView.swift */; };
 		96BEB26FE3BE3C1BAB4F8F71 /* NotelyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F92311962A01A52B450F566 /* NotelyApp.swift */; };
@@ -35,6 +36,9 @@
 		7A1B2C3D4E5F60718293A4B6 /* MarkdownTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B5 /* MarkdownTable.swift */; };
 		7A1B2C3D4E5F60718293A4C6 /* LatexMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4C5 /* LatexMath.swift */; };
 		C49FAA123F69F37D5D946DD6 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A4085CE734D06BACDB912F /* ColorTokens.swift */; };
+		5A1E1C0A0000000000000002 /* ShiyeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1E1C0A0000000000000001 /* ShiyeIcon.swift */; };
+		5EAF0221B0000000000000002 /* FuzzySearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EAF0221B0000000000000001 /* FuzzySearch.swift */; };
+		5EAF0221B0000000000000004 /* SearchPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EAF0221B0000000000000003 /* SearchPopover.swift */; };
 		D2889E648CC1EA5E1943F8C4 /* DataController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E1635F8EC09DAC796A3A7B3 /* DataController.swift */; };
 		DA1C5BC8DF33C0DB85CC2167 /* FileNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCF1FEF34613D6755052666A /* FileNote.swift */; };
 		DB4658A93567D89048472713 /* TitleExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */; };
@@ -46,6 +50,7 @@
 /* Begin PBXFileReference section */
 		051335655F5AEF97F593867C /* NoteModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteModel.swift; sourceTree = "<group>"; };
 		12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WysiwygEngine.swift; sourceTree = "<group>"; };
+		C0FFEE0017A7000000000001 /* CompositeFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositeFont.swift; sourceTree = "<group>"; };
 		3F92311962A01A52B450F566 /* NotelyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotelyApp.swift; sourceTree = "<group>"; };
 		41504AFB5496F8D42652D3DE /* Notely.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Notely.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		42B5746C3AF4A0D882715D97 /* EditorContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorContainerView.swift; sourceTree = "<group>"; };
@@ -53,6 +58,9 @@
 		4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleExtractor.swift; sourceTree = "<group>"; };
 		BB22CC33DD44EE55FF660006 /* FrontmatterParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParser.swift; sourceTree = "<group>"; };
 		62A4085CE734D06BACDB912F /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
+		5A1E1C0A0000000000000001 /* ShiyeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiyeIcon.swift; sourceTree = "<group>"; };
+		5EAF0221B0000000000000001 /* FuzzySearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuzzySearch.swift; sourceTree = "<group>"; };
+		5EAF0221B0000000000000003 /* SearchPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchPopover.swift; sourceTree = "<group>"; };
 		65A3B1ABF107ECCBBF6D9172 /* ImageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachment.swift; sourceTree = "<group>"; };
 		7A1B2C3D4E5F60718293A4D5 /* CursorMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorMapping.swift; sourceTree = "<group>"; };
 		7A1B2C3D4E5F60718293A4F5 /* CodeBlockLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBlockLayoutManager.swift; sourceTree = "<group>"; };
@@ -120,6 +128,7 @@
 				7A1B2C3D4E5F60718293A4B5 /* MarkdownTable.swift */,
 				7A1B2C3D4E5F60718293A4C5 /* LatexMath.swift */,
 				12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */,
+				C0FFEE0017A7000000000001 /* CompositeFont.swift */,
 				95F04AAD312B1139EC7FA8DC /* WysiwygTextView.swift */,
 			);
 			path = Editor;
@@ -129,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				62A4085CE734D06BACDB912F /* ColorTokens.swift */,
+				5A1E1C0A0000000000000001 /* ShiyeIcon.swift */,
 			);
 			path = Utils;
 			sourceTree = "<group>";
@@ -182,6 +192,7 @@
 				68CA4E783C0848DB5608663A /* TagExtractor.swift */,
 				BB22CC33DD44EE55FF660006 /* FrontmatterParser.swift */,
 				4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */,
+				5EAF0221B0000000000000001 /* FuzzySearch.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -201,6 +212,7 @@
 				BB22CC33DD44EE55FF660002 /* NoteTree.swift */,
 				BB22CC33DD44EE55FF66000A /* SidebarWidthPolicy.swift */,
 				7A1B2C3D4E5F60718293A4F8 /* TagSearch.swift */,
+				5EAF0221B0000000000000003 /* SearchPopover.swift */,
 			);
 			path = Sidebar;
 			sourceTree = "<group>";
@@ -290,6 +302,7 @@
 				1C4F41388134B567C66CDEC2 /* AppSettings.swift in Sources */,
 				76A92C439DECF23CAC694D84 /* AppShellView.swift in Sources */,
 				C49FAA123F69F37D5D946DD6 /* ColorTokens.swift in Sources */,
+				5A1E1C0A0000000000000002 /* ShiyeIcon.swift in Sources */,
 				D2889E648CC1EA5E1943F8C4 /* DataController.swift in Sources */,
 				FE518D7B91FF175DA7482FB8 /* EditorContainerView.swift in Sources */,
 				E49CB7CEF8BB110591720FB1 /* EditorView.swift in Sources */,
@@ -318,6 +331,9 @@
 				DB4658A93567D89048472713 /* TitleExtractor.swift in Sources */,
 				AA11BB22CC33DD44EE55FF01 /* WindowCloseBehavior.swift in Sources */,
 				402621765996F526DB134691 /* WysiwygEngine.swift in Sources */,
+				C0FFEE0017A7000000000002 /* CompositeFont.swift in Sources */,
+				5EAF0221B0000000000000002 /* FuzzySearch.swift in Sources */,
+				5EAF0221B0000000000000004 /* SearchPopover.swift in Sources */,
 				B3F55969806245A31F0F94E7 /* WysiwygTextView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

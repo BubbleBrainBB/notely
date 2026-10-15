@@ -27,8 +27,7 @@ struct EmptyEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 26, weight: .light))
+                ShiyeIcon(.note, size: 28)
                     .foregroundColor(.iconMuted)
                     .frame(width: 56, height: 56)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.sidebarBg))

@@ -64,30 +64,3 @@ enum NoteTreeBuilder {
         return ids
     }
 }
-
-enum NoteSearch {
-    /// Filters notes for the sidebar search field. A query starting with `#`
-    /// matches a tag and its sub-tags (`#ai` matches `ai` and `ai/编程`);
-    /// anything else matches the file name, title or body, case-insensitively.
-    static func filter(_ notes: [FileNote], query: String) -> [FileNote] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return notes }
-
-        if q.hasPrefix("#") {
-            let tag = String(q.dropFirst()).lowercased()
-            guard !tag.isEmpty else { return notes }
-            return notes.filter { note in
-                note.tags.contains { t in
-                    let t = t.lowercased()
-                    return t == tag || t.hasPrefix(tag + "/")
-                }
-            }
-        }
-
-        return notes.filter { note in
-            note.filename.localizedCaseInsensitiveContains(q) ||
-            note.title.localizedCaseInsensitiveContains(q) ||
-            note.content.localizedCaseInsensitiveContains(q)
-        }
-    }
-}

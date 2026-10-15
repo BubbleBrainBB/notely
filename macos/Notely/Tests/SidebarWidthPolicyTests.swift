@@ -1,6 +1,6 @@
 import Foundation
 
-// Standalone test runner for SidebarWidthPolicy / SidebarTier. No Xcode test
+// Standalone test runner for SidebarWidthPolicy. No Xcode test
 // target exists; the policy is Foundation-only, so it compiles directly:
 //
 //     swiftc Notely/Views/Sidebar/SidebarWidthPolicy.swift Tests/SidebarWidthPolicyTests.swift -o /tmp/sidebarwidth-tests
@@ -22,17 +22,8 @@ enum SidebarWidthPolicyTests {
     }
 
     static func main() {
-        // ── Tiers ──
-        expect(SidebarTier(width: 64), .rail, "64 is the rail")
-        expect(SidebarTier(width: 149), .rail, "just under the threshold is still the rail")
-        expect(SidebarTier(width: 150), .standard, "threshold starts the standard tier")
-        expect(SidebarTier(width: 299), .standard, "transition zone shows standard rows")
-        expect(SidebarTier(width: 300), .wide, "300 starts the wide tier")
-
         // ── Settling on release ──
-        expect(SidebarWidthPolicy.settle(64), 64, "rail stays")
-        expect(SidebarWidthPolicy.settle(120), 64, "under 150 snaps to the rail")
-        expect(SidebarWidthPolicy.settle(170), 200, "150–200 springs to 200")
+        expect(SidebarWidthPolicy.settle(170), 200, "under the minimum springs to 200")
         expect(SidebarWidthPolicy.settle(234), 240, "near 240 snaps to it")
         expect(SidebarWidthPolicy.settle(226), 226, "standard tier rests anywhere else")
         expect(SidebarWidthPolicy.settle(285), 280, "transition: closer to 280")

@@ -1,53 +1,37 @@
 import SwiftUI
 import AppKit
 
-/// Left column, after the 拾页 sidebar comp: workspace switcher, New Note,
-/// search, then the notes tree (workspace folders as notebooks), with
-/// Settings pinned to the bottom.
+/// Left column (design boards ㉔–㉕): search, then the library — its name as
+/// the tree's heading, with the switcher (⌄) and New Note (+) on that line —
+/// and Settings pinned to the bottom. No counts, no shortcut badges.
 struct SidebarView: View {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
-    @State private var notesExpanded = true
     @State private var expandedFolders: Set<String> = []
-    @FocusState private var searchFocused: Bool
 
     /// Matches the trailing 8. (Was 22 while the hidden-title-bar window
     /// clipped ~14pt off the column's leading edge; the unified toolbar
     /// window doesn't.)
     static let leadingInset: CGFloat = 8
 
-    private var isSearching: Bool {
-        !appModel.searchText.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
     private var sortedNotes: [FileNote] {
         NoteSorting.sorted(store.notes, by: appModel.sortMode)
     }
 
-    @State private var width: CGFloat = SidebarWidthPolicy.standardDefault
-
-    private var tier: SidebarTier { SidebarTier(width: width) }
-
     var body: some View {
-        Group {
-            if tier == .rail {
-                SidebarRail(sortedNotes: sortedNotes, expandedFolders: $expandedFolders)
-            } else {
-                list
-            }
-        }
-        // Fully compressible: SwiftUI derives the column's minimum from the
-        // content's, and the standard list's fixed rows (~140pt) would
-        // otherwise become a floor the 64pt rail can't get under.
+        list
         .frame(minWidth: 0, maxWidth: .infinity)
-        .environment(\.sidebarTier, tier)
-        .animation(.easeInOut(duration: 0.2), value: tier)
         .background(Color.sidebarBg)
         .overlay(alignment: .trailing) {
             Rectangle().fill(Color.borderColor).frame(width: 1)
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
-            width = newWidth
+        // The hide button sits in the sidebar's part of the toolbar, on the
+        // line of the traffic lights and the note title. Collapsed, the detail
+        // column shows the same button in the same spot.
+        .toolbar {
+            if appModel.isSidebarVisible {
+                SidebarToggleItem(placement: .automatic)
+            }
         }
         .background(
             SidebarSplitHook(workspaceKey: store.workspaceURL?.path,
@@ -55,15 +39,12 @@ struct SidebarView: View {
                              onCollapsedChange: { collapsed in
                                  // Dragging past the minimum collapses the column
                                  // without going through our binding; mirror it so
-                                 // the rail stops hiding the system toggle.
+                                 // the toolbar shows the way back.
                                  let target: NavigationSplitViewVisibility = collapsed ? .detailOnly : .all
                                  if appModel.columnVisibility != target { appModel.columnVisibility = target }
                              })
                 .frame(width: 0, height: 0)
         )
-        .onReceive(NotificationCenter.default.publisher(for: .focusNoteSearch)) { _ in
-            searchFocused = true
-        }
         .onChange(of: appModel.selectedNoteId, initial: true) { _, id in
             revealSelectedNote(id)
         }
@@ -74,7 +55,7 @@ struct SidebarView: View {
     private func longestRowWidth() -> CGFloat {
         let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         let outer = Self.leadingInset + 8
-        return store.notes.reduce(SidebarWidthPolicy.standardMin) { widest, note in
+        return store.notes.reduce(SidebarWidthPolicy.minimum) { widest, note in
             let depth = CGFloat(note.relativePath.split(separator: "/").count)
             let indent = NoteTreeIndent.base + depth * NoteTreeIndent.perLevel
                 + NoteTreeIndent.icon + NoteTreeIndent.iconGap
@@ -85,27 +66,15 @@ struct SidebarView: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    WorkspaceMenu()
-                    HideSidebarButton()
-                }
-                .padding(.bottom, 8)
-                NewNoteButton()
-                SidebarSearchField(text: Bindable(appModel).searchText, isFocused: $searchFocused)
-            }
-            .padding(.leading, Self.leadingInset)
-            .padding(.trailing, 8)
-            .padding(.top, 4)
-            .padding(.bottom, 12)
+            SidebarSearchField()
+                .padding(.leading, Self.leadingInset)
+                .padding(.trailing, 8)
+                .padding(.top, 4)
+                .padding(.bottom, 10)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
-                    if isSearching {
-                        searchResults
-                    } else {
-                        notesSection
-                    }
+                    notesSection
                 }
                 .padding(.leading, Self.leadingInset)
                 .padding(.trailing, 8)
@@ -124,41 +93,17 @@ struct SidebarView: View {
     // MARK: Notes tree
 
     @ViewBuilder private var notesSection: some View {
-        SidebarSectionLabel(title: "Library")
+        LibraryHeader()
 
-        SidebarRow(
-            icon: "books.vertical",
-            title: "Notes",
-            count: store.notes.count,
-            isEmphasized: appModel.selectedNoteId != nil && !appModel.showSettings
-        ) {
-            withAnimation(.easeInOut(duration: 0.15)) { notesExpanded.toggle() }
-        }
-        .contextMenu {
-            Picker("Sort By", selection: Binding(get: { appModel.sortMode }, set: { appModel.setSortMode($0) })) {
-                ForEach(SortMode.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-        }
-
-        if notesExpanded {
-            let tree = NoteTreeBuilder.build(from: sortedNotes)
-            if tree.totalCount == 0 {
-                Text("No notes yet")
-                    .font(.notely(12.5))
-                    .foregroundColor(.tertiaryText)
-                    .padding(.leading, NoteTreeIndent.base)
-                    .frame(height: 28)
-            } else {
-                NoteFolderContents(folder: tree, depth: 0, expandedFolders: $expandedFolders)
-            }
-        }
-    }
-
-    @ViewBuilder private var searchResults: some View {
-        let results = NoteSearch.filter(sortedNotes, query: appModel.searchText)
-        SidebarSectionLabel(title: results.isEmpty ? "No matching notes" : "\(results.count) results")
-        ForEach(results) { note in
-            NoteRow(note: note, leading: NoteTreeIndent.base, showsFolder: true)
+        let tree = NoteTreeBuilder.build(from: sortedNotes)
+        if tree.totalCount == 0 {
+            Text("No notes yet")
+                .font(.notely(12.5))
+                .foregroundColor(.tertiaryText)
+                .padding(.leading, NoteTreeIndent.base)
+                .frame(height: 28)
+        } else {
+            NoteFolderContents(folder: tree, depth: 0, expandedFolders: $expandedFolders)
         }
     }
 
@@ -166,7 +111,6 @@ struct SidebarView: View {
     private func revealSelectedNote(_ id: String?) {
         guard let id, let note = store.notes.first(where: { $0.id == id }) else { return }
         expandedFolders.formUnion(NoteTreeBuilder.ancestorIds(ofRelativePath: note.relativePath))
-        notesExpanded = true
     }
 }
 
@@ -185,147 +129,118 @@ enum NoteSorting {
     }
 }
 
-// MARK: - Top: workspace, New Note, search
+// MARK: - Library heading and search
 
-/// The workspace switcher: the open folder's name under a monogram badge.
-private struct WorkspaceMenu: View {
+/// The open folder's name, heading the notes tree. ⌄ opens the switcher
+/// (open another folder, new window, reveal, sort); + makes a new note.
+private struct LibraryHeader: View {
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.sidebarTier) private var tier
+    @State private var isHoveringAdd = false
 
     private var name: String {
         store.workspaceURL?.lastPathComponent ?? "Notes"
     }
 
     var body: some View {
-        Menu {
-            Button("Open Folder…") {
-                guard let url = NotesFolderPanel.choose() else { return }
-                store.openWorkspace(at: url)
-                appModel.openNote(nil)
-            }
-            Button("Open in New Window") { openWindow(id: "main") }
-            if let url = store.workspaceURL {
-                Divider()
-                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-            }
-        } label: {
-            HStack(spacing: 9) {
-                Text(String(name.prefix(1)).uppercased())
-                    .font(.notely(12, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 22, height: 22)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primaryText))
-                Text(name)
-                    .font(.notely(13, weight: .semibold))
-                    .foregroundColor(.primaryText)
-                    .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.iconMuted)
-                Spacer(minLength: 0)
-                if tier == .wide {
-                    Text(store.notes.count == 1 ? "1 note" : "\(store.notes.count) notes")
-                        .font(.notely(11))
-                        .foregroundColor(.tertiaryText)
+        HStack(spacing: 4) {
+            Menu {
+                Button("Open Folder…") {
+                    guard let url = NotesFolderPanel.choose() else { return }
+                    store.openWorkspace(at: url)
+                    appModel.openNote(nil)
                 }
-            }
-            .padding(.horizontal, 8)
-            .frame(height: 34)
-            .contentShape(Rectangle())
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-    }
-}
-
-/// The raised primary action at the top of the sidebar.
-private struct NewNoteButton: View {
-    @Environment(FileNoteStore.self) var store
-    @Environment(AppModel.self) var appModel
-    @State private var isHovering = false
-
-    var body: some View {
-        Button {
-            appModel.openNote(store.createNote()?.id)
-        } label: {
-            HStack(spacing: 9) {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 16)
-                Text("New Note")
-                    .font(.notely(13, weight: .semibold))
-                Spacer(minLength: 0)
-                ShortcutHint(text: "⌘N", boxed: true)
-            }
-            .foregroundColor(.primaryText)
-            .padding(.leading, 10)
-            .padding(.trailing, 8)
-            .frame(height: 32)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHovering ? Color.fromHex("#FBFBFA") : Color.surface)
-                    .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.controlBorder, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-    }
-}
-
-/// Search styled as a plain sidebar row; the field is live, not a button.
-private struct SidebarSearchField: View {
-    @Binding var text: String
-    var isFocused: FocusState<Bool>.Binding
-    @State private var isHovering = false
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .regular))
-                .foregroundColor(.iconMuted)
-                .frame(width: 16)
-            TextField("Search", text: $text)
-                .textFieldStyle(.plain)
-                .font(.notely(13))
-                .foregroundColor(.primaryText)
-                .focused(isFocused)
-                .onExitCommand { text = ""; isFocused.wrappedValue = false }
-            if text.isEmpty {
-                ShortcutHint(text: "⇧⌘F")
-            } else {
-                Button { text = "" } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
+                Button("Open in New Window") { openWindow(id: "main") }
+                if let url = store.workspaceURL {
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
+                Divider()
+                Picker("Sort By", selection: Binding(get: { appModel.sortMode }, set: { appModel.setSortMode($0) })) {
+                    ForEach(SortMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(name)
+                        .font(.notely(13, weight: .medium))
+                        .foregroundColor(.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(.iconMuted)
                 }
-                .buttonStyle(.plain)
+                .contentShape(Rectangle())
             }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Switch or open a folder")
+
+            Spacer(minLength: 0)
+
+            Button {
+                appModel.openNote(store.createNote()?.id)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(isHoveringAdd ? .primaryText : .iconMuted)
+                    .frame(width: 24, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(isHoveringAdd ? Color.cardHover : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("New Note (⌘N)")
+            .onHover { isHoveringAdd = $0 }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 30)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isFocused.wrappedValue ? Color.surface : (isHovering ? Color.cardHover : Color.clear))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(isFocused.wrappedValue ? Color.controlBorder : Color.clear, lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { isFocused.wrappedValue = true }
-        .onHover { isHovering = $0 }
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .frame(height: 28)
     }
 }
 
-private struct ShortcutHint: View {
+/// Search styled as a plain sidebar row. Clicking it opens the Spotlight-style
+/// quick search popover (SearchPopover), which owns the query and the fuzzy
+/// matching — the sidebar itself no longer filters inline.
+private struct SidebarSearchField: View {
+    @Environment(AppModel.self) private var appModel
+    @State private var isHovering = false
+
+    var body: some View {
+        Button { appModel.presentSearch() } label: {
+            HStack(spacing: 9) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.iconMuted)
+                    .frame(width: 16)
+                Text("Search")
+                    .font(.notely(13))
+                    .foregroundColor(.tertiaryText)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isHovering ? Color.cardHover : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(isHovering ? Color.controlBorder : Color.clear, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("Search Notes (⇧⌘F)")
+    }
+}
+
+struct ShortcutHint: View {
     let text: String
     var boxed = false
 
@@ -361,11 +276,32 @@ struct SidebarSectionLabel: View {
     }
 }
 
-/// A top-level navigation row (icon, title, trailing count).
+/// A top-level navigation row (icon, title).
+/// A sidebar icon: one of 拾页's glyphs, or an SF Symbol for the generic
+/// actions (settings, search…).
+enum SidebarIcon {
+    case glyph(ShiyeGlyph)
+    case symbol(String)
+}
+
+private struct SidebarIconImage: View {
+    let icon: SidebarIcon
+    var size: CGFloat = 16
+    var symbolFont: Font = .system(size: 13, weight: .regular)
+
+    var body: some View {
+        switch icon {
+        case .glyph(let glyph):
+            ShiyeIcon(glyph, size: size)
+        case .symbol(let name):
+            Image(systemName: name).font(symbolFont)
+        }
+    }
+}
+
 struct SidebarRow: View {
-    let icon: String
+    let icon: SidebarIcon
     let title: String
-    var count: Int? = nil
     var isSelected = false
     /// Bold text without the selected fill — the row's subtree holds the
     /// selection (the design's "笔记" row while a note is open).
@@ -376,19 +312,13 @@ struct SidebarRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .regular))
+                SidebarIconImage(icon: icon)
                     .foregroundColor(isSelected || isEmphasized ? .primaryText : .iconMuted)
                     .frame(width: 16)
                 Text(title)
                     .font(.notely(13, weight: isSelected || isEmphasized ? .semibold : .regular))
                     .foregroundColor(isSelected || isEmphasized ? .primaryText : .secondaryText)
                 Spacer(minLength: 0)
-                if let count {
-                    Text("\(count)")
-                        .font(.notely(12))
-                        .foregroundColor(.tertiaryText)
-                }
             }
             .padding(.horizontal, 10)
             .frame(height: 30)
@@ -497,7 +427,6 @@ private struct FolderRow: View {
     let isExpanded: Bool
     var baseIndent: CGFloat = NoteTreeIndent.base
     let toggle: () -> Void
-    @Environment(\.sidebarTier) private var tier
     @State private var isHovering = false
 
     var body: some View {
@@ -522,9 +451,6 @@ private struct FolderRow: View {
                     .foregroundColor(isExpanded || isHovering ? .primaryText : .secondaryText)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Text(tier == .wide ? (folder.totalCount == 1 ? "1 note" : "\(folder.totalCount) notes") : "\(folder.totalCount)")
-                    .font(.notely(11.5))
-                    .foregroundColor(.faintText)
             }
             .padding(.leading, baseIndent + CGFloat(depth) * NoteTreeIndent.perLevel)
             .padding(.trailing, 10)
@@ -540,13 +466,12 @@ private struct FolderRow: View {
     }
 }
 
-/// One note in the tree or in search results. Carries the note actions that
-/// used to live on the note list's cards (pin, rename, reveal, delete).
+/// One note in the tree. Carries the note actions that used to live on the
+/// note list's cards (pin, rename, reveal, delete).
 private struct NoteRow: View {
     let note: FileNote
     /// Leading inset of the row's icon, measured from the sidebar row's edge.
     let leading: CGFloat
-    var showsFolder = false
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
     @State private var isHovering = false
@@ -566,24 +491,14 @@ private struct NoteRow: View {
             appModel.openNote(note.id)
         } label: {
             HStack(spacing: NoteTreeIndent.iconGap) {
-                Image(systemName: "doc")
-                    .font(.system(size: 11.5))
+                ShiyeIcon(.note, size: 15)
                     .foregroundColor(isSelected ? .secondaryText : .faintIcon)
                     .frame(width: NoteTreeIndent.icon)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(displayTitle)
-                        .font(.notely(13, weight: isSelected ? .semibold : .regular))
-                        .foregroundColor(isSelected ? .primaryText : .secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    if showsFolder && note.relativePath != "/" {
-                        Text(note.relativePath.dropFirst())
-                            .font(.notely(11))
-                            .foregroundColor(.tertiaryText)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
+                Text(displayTitle)
+                    .font(.notely(13, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .primaryText : .secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer(minLength: 0)
                 if note.pinned {
                     Image(systemName: "pin.fill")
@@ -593,8 +508,7 @@ private struct NoteRow: View {
             }
             .padding(.leading, leading)
             .padding(.trailing, 10)
-            .frame(minHeight: 28)
-            .padding(.vertical, showsFolder && note.relativePath != "/" ? 3 : 0)
+            .frame(height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? Color.selectedBg : (isHovering ? Color.cardHover : Color.clear))
@@ -639,152 +553,24 @@ private struct SidebarSettingsRow: View {
     @Environment(AppModel.self) var appModel
 
     var body: some View {
-        SidebarRow(icon: "slider.horizontal.3", title: "Settings", isSelected: appModel.showSettings) {
+        SidebarRow(icon: .symbol("slider.horizontal.3"), title: "Settings", isSelected: appModel.showSettings) {
             appModel.showSettings.toggle()
         }
     }
 }
 
-// MARK: - Width tiers (design board ⑰)
+/// The sidebar button as a toolbar item: a flat icon, without the Liquid
+/// Glass circle macOS 26 puts behind toolbar buttons.
+struct SidebarToggleItem: ToolbarContent {
+    let placement: ToolbarItemPlacement
 
-private struct SidebarTierKey: EnvironmentKey {
-    static let defaultValue: SidebarTier = .standard
-}
-
-extension EnvironmentValues {
-    var sidebarTier: SidebarTier {
-        get { self[SidebarTierKey.self] }
-        set { self[SidebarTierKey.self] = newValue }
-    }
-}
-
-extension Notification.Name {
-    /// Asks the sidebar to resize itself; userInfo["width"] = CGFloat.
-    static let sidebarRequestWidth = Notification.Name("notely.sidebarRequestWidth")
-}
-
-/// The narrow tier: icons only. Hovering Notes opens the notes tree in a
-/// flyout so switching notes doesn't need the full sidebar.
-private struct SidebarRail: View {
-    let sortedNotes: [FileNote]
-    @Binding var expandedFolders: Set<String>
-    @Environment(AppModel.self) var appModel
-    @Environment(FileNoteStore.self) var store
-    @State private var showsFlyout = false
-    @State private var hoverTask: Task<Void, Never>?
-
-    var body: some View {
-        VStack(spacing: 10) {
-            RailButton(systemName: "chevron.right.2", help: "Expand Sidebar") {
-                NotificationCenter.default.post(name: .sidebarRequestWidth, object: nil,
-                                                userInfo: ["width": SidebarWidthPolicy.standardDefault])
-            }
-            WorkspaceBadgeMenu()
-            RailButton(systemName: "plus", help: "New Note (⌘N)", raised: true) {
-                appModel.openNote(store.createNote()?.id)
-            }
-            RailButton(systemName: "magnifyingglass", help: "Search (⇧⌘F)") {
-                NotificationCenter.default.post(name: .sidebarRequestWidth, object: nil,
-                                                userInfo: ["width": SidebarWidthPolicy.standardDefault])
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    NotificationCenter.default.post(name: .focusNoteSearch, object: nil)
-                }
-            }
-            Rectangle().fill(Color.borderColor).frame(width: 28, height: 1)
-            RailButton(systemName: "doc.text", help: "Notes",
-                       isSelected: appModel.selectedNoteId != nil && !appModel.showSettings) {
-                showsFlyout.toggle()
-            }
-            .onHover { hovering in
-                hoverTask?.cancel()
-                guard hovering else { return }
-                hoverTask = Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(250))
-                    if !Task.isCancelled { showsFlyout = true }
-                }
-            }
-            .popover(isPresented: $showsFlyout, arrowEdge: .trailing) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
-                        SidebarSectionLabel(title: "Notes · \(store.notes.count)")
-                        NoteFolderContents(folder: NoteTreeBuilder.build(from: sortedNotes), depth: 0,
-                                           expandedFolders: $expandedFolders, baseIndent: 10)
-                    }
-                    .padding(8)
-                }
-                .frame(width: 280)
-                .frame(maxHeight: 480)
-                .environment(\.sidebarTier, .standard)
-                // A plain white card as in ⑰, not the system popover material.
-                .presentationBackground(Color.surface)
-                .environment(\.colorScheme, .light)
-            }
-            Spacer(minLength: 0)
-            RailButton(systemName: "slider.horizontal.3", help: "Settings", isSelected: appModel.showSettings) {
-                appModel.showSettings.toggle()
-            }
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) {
+            ToolbarItem(placement: placement) { SidebarToggleButton() }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: placement) { SidebarToggleButton() }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 6)
-        .padding(.bottom, 10)
-        .onChange(of: appModel.selectedNoteId) { _, _ in showsFlyout = false }
-    }
-}
-
-private struct RailButton: View {
-    let systemName: String
-    let help: String
-    var raised = false
-    var isSelected = false
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 15, weight: raised ? .semibold : .regular))
-                .foregroundColor(isSelected || raised ? .primaryText : .iconMuted)
-                .frame(width: 40, height: 34)
-                .background(
-                    RoundedRectangle(cornerRadius: raised ? 9 : 8, style: .continuous)
-                        .fill(raised ? Color.surface : (isSelected ? Color.selectedBg : (isHovering ? Color.cardHover : Color.clear)))
-                        .shadow(color: .black.opacity(raised ? 0.05 : 0), radius: 1, y: 1)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(raised ? Color.controlBorder : Color.clear, lineWidth: 1)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .onHover { isHovering = $0 }
-    }
-}
-
-/// Hide button inside the sidebar (standard / wide tiers), at the end of
-/// the workspace row — see AppShellView for why it isn't in the toolbar.
-private struct HideSidebarButton: View {
-    @Environment(AppModel.self) var appModel
-    @State private var isHovering = false
-
-    var body: some View {
-        Button {
-            appModel.toggleSidebar()
-        } label: {
-            Image(systemName: "sidebar.left")
-                .font(.system(size: 14))
-                .foregroundColor(isHovering ? .primaryText : .iconMuted)
-                .frame(width: 28, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isHovering ? Color.cardHover : Color.clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Hide Sidebar (⌥⌘S)")
-        .onHover { isHovering = $0 }
     }
 }
 
@@ -797,38 +583,13 @@ struct SidebarToggleButton: View {
         Button {
             appModel.toggleSidebar()
         } label: {
-            Label(appModel.isSidebarVisible ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.left")
+            Label {
+                Text(appModel.isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+            } icon: {
+                Image(nsImage: ShiyeGlyph.sidebar.templateImage())
+            }
         }
         .help(appModel.isSidebarVisible ? "Hide Sidebar (⌥⌘S)" : "Show Sidebar (⌥⌘S)")
-    }
-}
-
-/// The workspace monogram alone, keeping the switcher menu.
-private struct WorkspaceBadgeMenu: View {
-    @Environment(FileNoteStore.self) var store
-    @Environment(AppModel.self) var appModel
-
-    private var name: String { store.workspaceURL?.lastPathComponent ?? "Notes" }
-
-    var body: some View {
-        Menu {
-            Text(name)
-            Button("Open Folder…") {
-                guard let url = NotesFolderPanel.choose() else { return }
-                store.openWorkspace(at: url)
-                appModel.openNote(nil)
-            }
-        } label: {
-            Text(String(name.prefix(1)).uppercased())
-                .font(.notely(13, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 28, height: 28)
-                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primaryText))
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .help(name)
     }
 }
 
@@ -884,17 +645,12 @@ private struct SidebarSplitHook: NSViewRepresentable {
             guard let split = view as? NSSplitView else { return }
             splitView = split
             lastWidth = sidebarWidth
-            enforceRailMinimum()
+            enforceMinimum()
+            removeTitlebarSeparators()
 
             observers.append(NotificationCenter.default.addObserver(
                 forName: NSSplitView.didResizeSubviewsNotification, object: split, queue: .main) { [weak self] _ in
                     self?.didResize()
-                })
-            observers.append(NotificationCenter.default.addObserver(
-                forName: .sidebarRequestWidth, object: nil, queue: .main) { [weak self] note in
-                    guard let self, self.window?.isKeyWindow == true,
-                          let width = note.userInfo?["width"] as? CGFloat else { return }
-                    self.setWidth(width, save: true)
                 })
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
                 self?.handle(event) ?? event
@@ -925,7 +681,7 @@ private struct SidebarSplitHook: NSViewRepresentable {
         private func handle(_ event: NSEvent) -> NSEvent? {
             switch event.type {
             case .leftMouseDown where isOnDivider(event):
-                enforceRailMinimum()
+                enforceMinimum()
                 if event.clickCount == 2 {
                     let target = SidebarWidthPolicy.doubleClickTarget(current: sidebarWidth, contentWidth: contentWidth())
                     setWidth(target, save: true)
@@ -959,18 +715,27 @@ private struct SidebarSplitHook: NSViewRepresentable {
             setWidth(SidebarWidthPolicy.settle(sidebarWidth), save: true)
         }
 
-        /// Belt and braces for the rail: make sure the split view item's own
-        /// minimum is below 64 (positioning the divider at or under the
-        /// item's minimum collapses it). The content is compressible (see
-        /// SidebarView.body), so SwiftUI shouldn't raise it again.
-        private func enforceRailMinimum() {
+        /// No hard line under the title bar: the title and the page read as
+        /// one surface, and text scrolling under the toolbar gets the system's
+        /// soft edge instead.
+        private func removeTitlebarSeparators() {
+            window?.titlebarSeparatorStyle = .none
+            (splitView?.delegate as? NSSplitViewController)?.splitViewItems.forEach {
+                $0.titlebarSeparatorStyle = .none
+            }
+        }
+
+        /// Keep the split view item's own minimum just under the narrowest
+        /// width (positioning the divider at or under the item's minimum
+        /// collapses it), whatever SwiftUI derived from the content.
+        private func enforceMinimum() {
             guard let item = (splitView?.delegate as? NSSplitViewController)?.splitViewItems.first else { return }
-            let floor = SidebarWidthPolicy.rail - 8
+            let floor = SidebarWidthPolicy.minimum - 8
             if item.minimumThickness != floor { item.minimumThickness = floor }
         }
 
         private func setWidth(_ width: CGFloat, save: Bool) {
-            enforceRailMinimum()
+            enforceMinimum()
             guard let split = splitView, !isCollapsed else { return }
             if abs(sidebarWidth - width) > 0.5 {
                 NSAnimationContext.runAnimationGroup { context in
@@ -985,10 +750,16 @@ private struct SidebarSplitHook: NSViewRepresentable {
             }
         }
 
+        /// The folder's saved width, or the default for a folder opened for
+        /// the first time — without one the split view keeps whatever width
+        /// it started at (140 after the welcome page).
         private func restoreSavedWidth() {
-            guard let key = workspaceKey,
-                  let saved = UserDefaults.standard.object(forKey: "notely.sidebarWidth." + key) as? Double else { return }
-            DispatchQueue.main.async { [weak self] in self?.setWidth(CGFloat(saved), save: false) }
+            guard let key = workspaceKey else { return }
+            let saved = UserDefaults.standard.object(forKey: "notely.sidebarWidth." + key) as? Double
+            // Widths saved while the icon rail existed (64) count as unset.
+            let width = saved.map { CGFloat($0) }.flatMap { $0 >= SidebarWidthPolicy.minimum ? $0 : nil }
+                ?? SidebarWidthPolicy.standardDefault
+            DispatchQueue.main.async { [weak self] in self?.setWidth(width, save: false) }
         }
     }
 }
