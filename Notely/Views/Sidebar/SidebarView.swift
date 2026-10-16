@@ -1,13 +1,16 @@
 import SwiftUI
 import AppKit
 
-/// Left column (design boards ㉔–㉕): search, then the library — its name as
-/// the tree's heading, with the switcher (⌄) and New Note (+) on that line —
+/// Left column (design boards ㉔–㉕, ㉚): search, then the library — its name
+/// as the tree's heading that folds it, with folder options (…) and New
+/// Note (+) on that line —
 /// and Settings pinned to the bottom. No counts, no shortcut badges.
 struct SidebarView: View {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
     @State private var expandedFolders: Set<String> = []
+    /// The whole library folded under its header (design board ㉚ C).
+    @AppStorage("notely.libraryCollapsed") private var libraryCollapsed = false
 
     /// Matches the trailing 8. (Was 22 while the hidden-title-bar window
     /// clipped ~14pt off the column's leading edge; the unified toolbar
@@ -46,6 +49,11 @@ struct SidebarView: View {
         )
         .onChange(of: appModel.selectedNoteId, initial: true) { _, id in
             revealSelectedNote(id)
+        }
+        // A note opened from elsewhere (search, New Note) unfolds the
+        // library so its row shows; a folded library stays folded at launch.
+        .onChange(of: appModel.selectedNoteId) { _, id in
+            if id != nil, libraryCollapsed { libraryCollapsed = false }
         }
     }
 
@@ -92,10 +100,14 @@ struct SidebarView: View {
     // MARK: Notes tree
 
     @ViewBuilder private var notesSection: some View {
-        LibraryHeader()
+        LibraryHeader(isCollapsed: libraryCollapsed) {
+            withAnimation(.easeInOut(duration: 0.15)) { libraryCollapsed.toggle() }
+        }
 
         let tree = NoteTreeBuilder.build(from: sortedNotes)
-        if tree.totalCount == 0 {
+        if libraryCollapsed {
+            EmptyView()
+        } else if tree.totalCount == 0 {
             Text("No notes yet")
                 .font(.notely(12.5))
                 .foregroundColor(.tertiaryText)
@@ -130,12 +142,18 @@ enum NoteSorting {
 
 // MARK: - Library heading and search
 
-/// The open folder's name, heading the notes tree. ⌄ opens the switcher
-/// (open another folder, new window, reveal, sort); + makes a new note.
+/// The open folder's name, heading the notes tree. Clicking it folds the
+/// whole library; … opens the folder options (open another folder, new
+/// window, reveal, sort); + makes a new note.
 private struct LibraryHeader: View {
+    /// Whether the library's tree is folded away.
+    let isCollapsed: Bool
+    let toggle: () -> Void
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
     @Environment(\.openWindow) private var openWindow
+    @State private var isHovering = false
+    @State private var isHoveringMore = false
     @State private var isHoveringAdd = false
 
     private var name: String {
@@ -143,7 +161,37 @@ private struct LibraryHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
+            // The name folds and unfolds the library (design board ㉚ C). Its
+            // icon turns into the disclosure arrow on hover — and stays an
+            // arrow while folded — like the folder rows below.
+            Button(action: toggle) {
+                HStack(spacing: NoteTreeIndent.iconGap) {
+                    Group {
+                        if isHovering || isCollapsed {
+                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.secondaryText)
+                        } else {
+                            ShiyeIcon(.library, size: NoteTreeIndent.icon)
+                                .foregroundColor(.iconMuted)
+                        }
+                    }
+                    .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+                    Text(name)
+                        .font(.notely(13, weight: .medium))
+                        .foregroundColor(.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 0)
+                }
+                .padding(.leading, NoteTreeIndent.base)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isCollapsed ? "Show Notes" : "Hide Notes")
+
             Menu {
                 Button("Open Folder…") {
                     guard let url = NotesFolderPanel.choose() else { return }
@@ -159,25 +207,22 @@ private struct LibraryHeader: View {
                     ForEach(SortMode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
             } label: {
-                HStack(spacing: 5) {
-                    Text(name)
-                        .font(.notely(13, weight: .medium))
-                        .foregroundColor(.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.iconMuted)
-                }
-                .contentShape(Rectangle())
+                ShiyeIcon(.more, size: 15)
+                    .foregroundColor(isHoveringMore ? .primaryText : .iconMuted)
+                    .frame(width: 24, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(isHoveringMore ? Color.cardHover : Color.clear)
+                    )
+                    .contentShape(Rectangle())
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("Switch or open a folder")
-
-            Spacer(minLength: 0)
+            .help("Folder Options")
+            .accessibilityLabel("Folder Options")
+            .onHover { isHoveringMore = $0 }
 
             Button {
                 appModel.openNote(store.createNote()?.id)
@@ -196,9 +241,13 @@ private struct LibraryHeader: View {
             .help("New Note (⌘N)")
             .onHover { isHoveringAdd = $0 }
         }
-        .padding(.leading, 10)
         .padding(.trailing, 4)
         .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isHovering ? Color.cardHover : Color.clear)
+        )
+        .onHover { isHovering = $0 }
     }
 }
 
