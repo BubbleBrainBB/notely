@@ -25,12 +25,12 @@ struct SidebarView: View {
         // what separates the two columns (design board ㉗ D).
         .background(Color.windowGround)
         // The hide button sits in the sidebar's part of the toolbar, on the
-        // line of the traffic lights and the note title. Collapsed, the detail
-        // column shows the same button in the same spot.
+        // line of the traffic lights and the note title. It stays there when
+        // the sidebar collapses, so it is always ONE item: swapping it for a
+        // second one in the detail column made the toggle vanish and the new
+        // one slide in from above mid-animation.
         .toolbar {
-            if appModel.isSidebarVisible {
-                SidebarToggleItem(placement: .automatic)
-            }
+            SidebarToggleItem(placement: .automatic)
         }
         .background(
             SidebarSplitHook(workspaceKey: store.workspaceURL?.path,

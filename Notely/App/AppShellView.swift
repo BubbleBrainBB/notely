@@ -33,8 +33,8 @@ struct AppShellView: View {
                         // split view collapse.
                         .navigationSplitViewColumnWidth(min: SidebarWidthPolicy.minimum - 8, ideal: Self.sidebarWidth,
                                                         max: SidebarWidthPolicy.max)
-                        // Our own toggle instead (SidebarView adds it while the
-                        // sidebar shows, the detail while it is collapsed).
+                        // Our own toggle instead (SidebarView adds it; it stays
+                        // beside the traffic lights when the sidebar collapses).
                         .toolbar(removing: .sidebarToggle)
                 } detail: {
                     // The page floats on the window ground (design board ㉘ D6):
@@ -58,12 +58,6 @@ struct AppShellView: View {
                         .background(Color.windowGround)
                         .toolbarBackground(.hidden, for: .windowToolbar)
                     .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
-                    .toolbar {
-                        // Collapsed: the way back sits beside the traffic lights.
-                        if !appModel.isSidebarVisible {
-                            SidebarToggleItem(placement: .navigation)
-                        }
-                    }
                 }
                 .navigationSplitViewStyle(.balanced)
                 .frame(minWidth: Self.sidebarWidth + detailMinWidth, minHeight: 600)
