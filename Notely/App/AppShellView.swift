@@ -6,13 +6,16 @@ struct AppShellView: View {
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
 
     static let sidebarWidth: CGFloat = 240
+    /// Gap between the editor's page and the window edges.
+    static let pageInset: CGFloat = 8
+    static let pageShape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
     /// Minimum width for the editor detail column: the capped text column plus
     /// its side insets. Enforced as the detail column's min and folded into the
     /// window min width so the text column never reflows when the sidebar
     /// collapses/expands — the pane stays at or above the cap engagement point.
     private var detailMinWidth: CGFloat {
-        WysiwygTextView.columnWidth(for: editorWidth) + WysiwygTextView.minSideInset * 2
+        WysiwygTextView.columnWidth(for: editorWidth) + WysiwygTextView.minSideInset * 2 + Self.pageInset * 2
     }
 
     var body: some View {
@@ -34,27 +37,26 @@ struct AppShellView: View {
                         // sidebar shows, the detail while it is collapsed).
                         .toolbar(removing: .sidebarToggle)
                 } detail: {
-                    // Extends under the toolbar so text scrolls beneath its
-                    // glass; the scroll view insets its content to match.
+                    // The page floats on the window ground (design board ㉘ D6):
+                    // the title and toolbar icons sit on the ground above it,
+                    // and the page, inset 8 on the other three sides, holds
+                    // only the text.
                     EditorContainerView()
-                        .ignoresSafeArea(.container, edges: .top)
-                        // No toolbar band or line over the page: the title sits
-                        // on the same white as the text, and text scrolling up
-                        // fades out under it instead of meeting a hard edge.
-                        .toolbarBackground(.hidden, for: .windowToolbar)
-                        .overlay(alignment: .top) {
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.editorBg, location: 0),
-                                    .init(color: Color.editorBg, location: 0.55),
-                                    .init(color: Color.editorBg.opacity(0), location: 1),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                            .frame(height: 76)
-                            .allowsHitTesting(false)
-                            .ignoresSafeArea(.container, edges: .top)
+                        .clipShape(Self.pageShape)
+                        .background {
+                            Self.pageShape
+                                .fill(Color.editorBg)
+                                .shadow(color: .black.opacity(0.05), radius: 1.5, y: 1)
+                                .shadow(color: .black.opacity(0.04), radius: 8, y: 4)
                         }
+                        .overlay {
+                            Self.pageShape
+                                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                                .allowsHitTesting(false)
+                        }
+                        .padding([.leading, .trailing, .bottom], Self.pageInset)
+                        .background(Color.windowGround)
+                        .toolbarBackground(.hidden, for: .windowToolbar)
                     .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
                     .toolbar {
                         // Collapsed: the way back sits beside the traffic lights.

@@ -9,6 +9,11 @@ import Observation
 enum Palette {
     static let appBg = Color.fromHex("#FFFFFF")
     static let sidebarBg = Color.fromHex("#F7F7F5")
+    /// The window's ground (design board ㉗ D): the sidebar sits on it and
+    /// the editor floats above it as a white page.
+    static let windowGround = Color.fromHex("#EFEEEA")
+    /// Fill behind the selected sidebar row, on the window ground.
+    static let groundSelectedBg = Color.fromHex("#E2E1DC")
     static let editorBg = Color.fromHex("#FFFFFF")
     static let primaryText = Color.fromHex("#37352F")
     static let secondaryText = Color.fromHex("#55534E")
@@ -65,6 +70,8 @@ final class ThemeManager {
 extension Color {
     static var appBg: Color { Palette.appBg }
     static var sidebarBg: Color { Palette.sidebarBg }
+    static var windowGround: Color { Palette.windowGround }
+    static var groundSelectedBg: Color { Palette.groundSelectedBg }
     static var editorBg: Color { Palette.editorBg }
     static var primaryText: Color { Palette.primaryText }
     static var secondaryText: Color { Palette.secondaryText }

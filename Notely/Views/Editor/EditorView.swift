@@ -164,7 +164,10 @@ struct NoteToolbar: ViewModifier {
             .navigationTitle(title)
             .navigationSubtitle(subtitle)
             .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
+                // Flat 拾页 glyphs, each its own item with the shared glass
+                // capsule turned off — the same treatment as the sidebar
+                // toggle, so the page's corner holds plain icons, not a pill.
+                FlatToolbarItem {
                     Button {
                         appModel.openNote(store.createNote()?.id)
                     } label: {
@@ -175,18 +178,26 @@ struct NoteToolbar: ViewModifier {
                         }
                     }
                     .help("New Note (⌘N)")
+                }
 
-                    if let note {
+                if let note {
+                    FlatToolbarItem {
                         Button {
                             showsInfo.toggle()
                         } label: {
-                            Label("Info", systemImage: "info.circle")
+                            Label {
+                                Text("Info")
+                            } icon: {
+                                Image(nsImage: ShiyeGlyph.info.templateImage())
+                            }
                         }
                         .help("Note Info")
                         .popover(isPresented: $showsInfo, arrowEdge: .bottom) {
                             DocumentInfoPopover(note: note, wordCount: wordCount, charCount: charCount)
                         }
+                    }
 
+                    FlatToolbarItem {
                         Menu {
                             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
                             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
@@ -196,8 +207,13 @@ struct NoteToolbar: ViewModifier {
                                 store.deleteNote(note.id)
                             }
                         } label: {
-                            Label("More", systemImage: "ellipsis")
+                            Label {
+                                Text("More")
+                            } icon: {
+                                Image(nsImage: ShiyeGlyph.more.templateImage())
+                            }
                         }
+                        .menuIndicator(.hidden)
                         .help("More")
                     }
                 }
@@ -214,6 +230,21 @@ struct NoteToolbar: ViewModifier {
             ? date.formatted(.dateTime.month(.abbreviated).day())
             : date.formatted(.dateTime.month(.abbreviated).day().year())
         return "Edited \(day)"
+    }
+}
+
+/// A trailing toolbar item drawn as a bare icon: on macOS 26 the shared
+/// Liquid Glass background is hidden (see SidebarToggleItem).
+struct FlatToolbarItem<Content: View>: ToolbarContent {
+    @ViewBuilder let content: () -> Content
+
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) {
+            ToolbarItem(placement: .primaryAction, content: content)
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction, content: content)
+        }
     }
 }
 

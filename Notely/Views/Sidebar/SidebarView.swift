@@ -21,10 +21,9 @@ struct SidebarView: View {
     var body: some View {
         list
         .frame(minWidth: 0, maxWidth: .infinity)
-        .background(Color.sidebarBg)
-        .overlay(alignment: .trailing) {
-            Rectangle().fill(Color.borderColor).frame(width: 1)
-        }
+        // On the window ground, no divider: the editor's floating page is
+        // what separates the two columns (design board ㉗ D).
+        .background(Color.windowGround)
         // The hide button sits in the sidebar's part of the toolbar, on the
         // line of the traffic lights and the note title. Collapsed, the detail
         // column shows the same button in the same spot.
@@ -324,7 +323,7 @@ struct SidebarRow: View {
             .frame(height: 30)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isSelected ? Color.selectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
             )
             .contentShape(Rectangle())
         }
@@ -511,7 +510,7 @@ private struct NoteRow: View {
             .frame(height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isSelected ? Color.selectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
             )
             .contentShape(Rectangle())
         }

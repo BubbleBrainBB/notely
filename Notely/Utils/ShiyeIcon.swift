@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 拾页's own icons (design board ⑳, set C): line glyphs on a 24-unit grid,
 /// stroked at 1.7 with round caps and joins — the same hand as the folder
-/// glyph (⑱). Generic actions (info, more, search…) stay on SF Symbols.
+/// glyph (⑱). Other generic actions (search, settings…) stay on SF Symbols.
 enum ShiyeGlyph {
     /// Window with the sidebar split off: show / hide the sidebar.
     case sidebar
@@ -15,6 +15,10 @@ enum ShiyeGlyph {
     case library
     /// `#`, as tags are written in the notes.
     case tag
+    /// A circled `i`: note info.
+    case info
+    /// Three dots: more actions.
+    case more
 
     /// Stroke width at `size` points, matching 1.7 on the 24-unit grid.
     static func lineWidth(forSize size: CGFloat) -> CGFloat { 1.7 * size / 24 }
@@ -80,6 +84,17 @@ enum ShiyeGlyph {
             line(&path, (16, 4), (14.5, 20))
             line(&path, (4.5, 9), (19.5, 9))
             line(&path, (4, 15), (19, 15))
+
+        case .info:
+            path.addEllipse(in: CGRect(origin: p(3, 3), size: CGSize(width: 18 * k, height: 18 * k)))
+            line(&path, (12, 11), (12, 16.5))
+            // A stroke this short draws as a round dot.
+            line(&path, (12, 7.6), (12, 7.65))
+
+        case .more:
+            for x in [5.5, 12, 18.5] as [CGFloat] {
+                path.addEllipse(in: CGRect(origin: p(x - 0.6, 11.4), size: CGSize(width: 1.2 * k, height: 1.2 * k)))
+            }
         }
         return path
     }
