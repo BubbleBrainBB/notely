@@ -462,7 +462,10 @@ final class WysiwygTextView: NSTextView {
     }
 
     private func rebuildEngine() {
-        let style = WysiwygEngine.makeStyle(fontSize: fontSize, lineHeight: lineHeight, fontName: fontName)
+        // The accent is read here; an accent change rebuilds the window
+        // (WindowRoot's .id), so the editor picks up the new color.
+        let style = WysiwygEngine.makeStyle(fontSize: fontSize, lineHeight: lineHeight, fontName: fontName,
+                                            strongColor: MarkdownPalette.strong(accentHex: AppSettings.accentColorHex))
         engine = WysiwygEngine(style: style)
         engineFontSize = fontSize
         engineLineHeight = lineHeight

@@ -11,6 +11,16 @@ enum MarkdownPalette {
     }
 
     static let primary = hex(0x37352F)
+    /// Bold text when the accent is too close to the body ink to tell apart
+    /// (the Ink accent): a step darker, so **strong** still reads at a glance.
+    static let strong = hex(0x111110)
+
+    /// Bold text in the user's accent color; the deeper ink for the Ink accent.
+    static func strong(accentHex: String) -> NSColor {
+        let digits = accentHex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard let value = UInt32(digits, radix: 16), value != 0x37352F else { return strong }
+        return hex(value)
+    }
     static let secondary = hex(0x55534E)
     static let tertiary = hex(0x73726E)
     static let faint = hex(0x9B9A97)

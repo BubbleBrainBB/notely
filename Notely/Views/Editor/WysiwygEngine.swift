@@ -140,14 +140,19 @@ final class WysiwygEngine {
         return p
     }
 
-    static func makeStyle(fontSize: CGFloat = 16, lineHeight: CGFloat = 1.75, fontName: String = "System") -> MarkdownStyle {
+    /// - Parameter strongColor: Bold text color — the accent (Settings ›
+    ///   Appearance), passed in by the text view.
+    static func makeStyle(fontSize: CGFloat = 16, lineHeight: CGFloat = 1.75, fontName: String = "System",
+                          strongColor: NSColor = MarkdownPalette.strong) -> MarkdownStyle {
         let ink = MarkdownPalette.primary
         let bodyLineHeight = (fontSize * lineHeight).rounded()
 
         // Body typeface follows the user's Editor Font choice. Bold/italic are
         // derived from the same family so they stay consistent.
         let bodyFont = resolveFont(name: fontName, size: fontSize)
-        let boldFont = resolveFont(name: fontName, size: fontSize, weight: .semibold)
+        // Bold, not Semibold: a Semibold Latin face (New York, SF) sits too
+        // close to Regular to stand out.
+        let boldFont = resolveFont(name: fontName, size: fontSize, weight: .bold)
         let italicFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
         let boldItalicFont = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
 
@@ -192,8 +197,8 @@ final class WysiwygEngine {
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2, color: MarkdownPalette.tertiary),
             ],
-            bold: [.font: boldFont, .foregroundColor: ink],
-            boldItalic: [.font: boldItalicFont, .foregroundColor: ink],
+            bold: [.font: boldFont, .foregroundColor: strongColor],
+            boldItalic: [.font: boldItalicFont, .foregroundColor: strongColor],
             italic: [.font: italicFont],
             strikethrough: [
                 .foregroundColor: MarkdownPalette.faint,
