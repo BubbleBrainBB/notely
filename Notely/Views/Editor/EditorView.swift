@@ -163,7 +163,10 @@ struct NoteToolbar: ViewModifier {
         content
             .navigationTitle(title)
             .navigationSubtitle(subtitle)
+            .modifier(RemovesSystemTitle())
             .toolbar {
+                NoteTitleHeader(title: title, subtitle: subtitle)
+
                 // Flat 拾页 glyphs, each its own item with the shared glass
                 // capsule turned off — the same treatment as the sidebar
                 // toggle, so the page's corner holds plain icons, not a pill.
@@ -233,17 +236,83 @@ struct NoteToolbar: ViewModifier {
     }
 }
 
-/// A trailing toolbar item drawn as a bare icon: on macOS 26 the shared
-/// Liquid Glass background is hidden (see SidebarToggleItem).
+/// A toolbar item drawn bare: on macOS 26 the shared Liquid Glass
+/// background is hidden (see SidebarToggleItem).
 struct FlatToolbarItem<Content: View>: ToolbarContent {
+    /// `.automatic` lines up at the trailing edge, after the title's spacer;
+    /// `.primaryAction` would pull the icons to the leading side on macOS.
+    var placement: ToolbarItemPlacement = .automatic
     @ViewBuilder let content: () -> Content
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
-            ToolbarItem(placement: .primaryAction, content: content)
+            ToolbarItem(placement: placement, content: content)
                 .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: .primaryAction, content: content)
+            ToolbarItem(placement: placement, content: content)
+        }
+    }
+}
+
+/// The note's file name over the page (design board ㉙ B + H3): set in the
+/// editor's own body face — New York with 宋体 by default, through the same
+/// composite pairing as the text — at medium weight in secondary gray, so it
+/// reads as the page's running head rather than outshouting it. The edit
+/// date stays small sans in faint gray. The window keeps its plain title
+/// for the Window menu; only the toolbar shows this one. Needs macOS 26 for
+/// the flexible spacer that keeps the icons at the trailing edge once the
+/// system title is gone; older systems keep the system title.
+struct NoteTitleHeader: ToolbarContent {
+    let title: String
+    let subtitle: String
+    @AppStorage("notely.editorFont") private var editorFontName: String = "System"
+
+    var body: some ToolbarContent {
+        if #available(macOS 26, *) {
+            FlatToolbarItem(placement: .navigation) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Self.styledTitle(title, fontName: editorFontName))
+                        .foregroundColor(.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.notely(11))
+                            .foregroundColor(.faintText)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: 560, alignment: .leading)
+                .padding(.leading, 6)
+            }
+            ToolbarSpacer(.flexible)
+        }
+    }
+
+    /// `title` in the body family at 13.5pt medium, with Han runs re-set in
+    /// the paired CJK face exactly as the editor does.
+    static func styledTitle(_ title: String, fontName: String) -> AttributedString {
+        let font = WysiwygEngine.resolveFont(name: fontName, size: 13.5, weight: .medium)
+        let storage = NSTextStorage(string: title, attributes: [.font: font])
+        CompositeFont(baseFont: font, familyName: fontName).apply(to: storage)
+
+        var result = AttributedString()
+        storage.enumerateAttribute(.font, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            var run = AttributedString(storage.attributedSubstring(from: range).string)
+            run.font = Font((value as? NSFont ?? font) as CTFont)
+            result += run
+        }
+        return result
+    }
+}
+
+/// Hides the system's toolbar title where NoteTitleHeader replaces it.
+private struct RemovesSystemTitle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.toolbar(removing: .title)
+        } else {
+            content
         }
     }
 }
