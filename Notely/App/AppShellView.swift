@@ -48,6 +48,9 @@ struct AppShellView: View {
                         Group {
                             if appModel.showMemos {
                                 MemosView()
+                            } else if appModel.selectedNoteId == nil, let id = appModel.selectedFileId,
+                                      let file = store.files.first(where: { $0.id == id }) {
+                                FilePreviewView(file: file)
                             } else {
                                 EditorContainerView()
                             }

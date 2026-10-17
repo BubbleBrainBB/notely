@@ -114,7 +114,7 @@ struct SidebarView: View {
             withAnimation(.easeInOut(duration: 0.15)) { libraryCollapsed.toggle() }
         }
 
-        let tree = NoteTreeBuilder.build(from: sortedNotes)
+        let tree = NoteTreeBuilder.build(from: sortedNotes, files: store.files)
         if libraryCollapsed || !store.hasLoadedNotes {
             // Folded, or the first scan hasn't landed: not "No notes yet".
             EmptyView()
@@ -465,6 +465,9 @@ private struct NoteFolderContents: View {
             // Note titles line up with sibling folder names (past the chevron).
             NoteRow(note: note, leading: leading(for: depth))
         }
+        ForEach(folder.files) { file in
+            FileRow(file: file, leading: leading(for: depth))
+        }
     }
 
     private func leading(for depth: Int) -> CGFloat {
@@ -586,6 +589,74 @@ private struct NoteRow: View {
         let wasSelected = appModel.selectedNoteId == note.id
         if let newId = store.renameNote(note.id, to: renameText), wasSelected {
             appModel.selectedNoteId = newId
+        }
+    }
+}
+
+/// An image, video or PDF in the tree, after the notes of its folder. Opens
+/// in the preview page.
+private struct FileRow: View {
+    let file: LibraryFile
+    let leading: CGFloat
+    @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
+    @State private var isHovering = false
+
+    private var isSelected: Bool {
+        appModel.selectedFileId == file.id && appModel.selectedNoteId == nil
+            && !appModel.showSettings && !appModel.showMemos
+    }
+
+    private var glyph: ShiyeGlyph {
+        switch file.kind {
+        case .image: .image
+        case .video: .video
+        case .pdf: .file
+        }
+    }
+
+    var body: some View {
+        Button {
+            appModel.openFile(file.id)
+        } label: {
+            HStack(spacing: NoteTreeIndent.iconGap) {
+                ShiyeIcon(glyph, size: 15)
+                    .foregroundColor(isSelected ? .secondaryText : .faintIcon)
+                    .frame(width: NoteTreeIndent.icon)
+                Text(file.name)
+                    .font(.notely(13, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .primaryText : .tertiaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, leading)
+            .padding(.trailing, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .contextMenu {
+            Button("Copy Markdown Link") {
+                guard let library = store.workspaceURL else { return }
+                let path = AttachmentImport.relativePath(from: library, to: file.url)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(AttachmentImport.markdown(forPath: path), forType: .string)
+            }
+            Button("Open in Default App") { NSWorkspace.shared.open(file.url) }
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+            Divider()
+            Button("Move to Trash", role: .destructive) {
+                if (try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)) != nil {
+                    if appModel.selectedFileId == file.id { appModel.selectedFileId = nil }
+                    store.reloadNotes()
+                }
+            }
         }
     }
 }

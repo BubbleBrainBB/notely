@@ -12,6 +12,9 @@ final class AppModel {
     var showSettings: Bool = false
     /// The Memos page is showing in place of the editor (design board ㉛).
     var showMemos: Bool = false
+    /// An image, video or PDF from the sidebar is showing in place of the
+    /// editor (its path, a `LibraryFile` id).
+    var selectedFileId: String? = nil
     /// Bound to the split view, so the system sidebar toggle in the window
     /// toolbar and the ⌥⌘S / ⇧⌘F commands share one source of truth.
     var columnVisibility: NavigationSplitViewVisibility = .all
@@ -51,6 +54,7 @@ final class AppModel {
     func openNote(_ id: String?) {
         showSettings = false
         showMemos = false
+        selectedFileId = nil
         selectedNoteId = id
         isSearchPresented = false
     }
@@ -59,7 +63,16 @@ final class AppModel {
         showSettings = false
         isSearchPresented = false
         selectedNoteId = nil
+        selectedFileId = nil
         showMemos = true
+    }
+
+    func openFile(_ id: String) {
+        showSettings = false
+        showMemos = false
+        isSearchPresented = false
+        selectedNoteId = nil
+        selectedFileId = id
     }
 
     func presentSearch() { isSearchPresented = true }

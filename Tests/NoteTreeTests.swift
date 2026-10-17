@@ -51,6 +51,25 @@ enum NoteTreeTests {
         expect(root.totalCount, 6, "root totalCount is every note")
         expect(NoteTreeBuilder.build(from: []).totalCount, 0, "empty workspace")
 
+        // ── Images, videos, PDFs ──
+        func file(_ name: String, in folder: String) -> LibraryFile {
+            let dir = folder == "/" ? "" : folder
+            let url = URL(fileURLWithPath: "/ws\(dir)/\(name)")
+            return LibraryFile(id: url.path, url: url, kind: LibraryFile.kind(of: url)!, updatedAt: Date(),
+                               relativePath: folder)
+        }
+        let withFiles = NoteTreeBuilder.build(from: notes, files: [
+            file("z.mp4", in: "/attachments"), file("a 10.png", in: "/attachments"),
+            file("a 9.png", in: "/attachments"), file("cover.jpg", in: "/Travel"),
+        ])
+        expect(withFiles.folders.map(\.name), ["attachments", "Travel", "产品思考"],
+               "a folder holding only files is listed")
+        expect(withFiles.folders[0].files.map(\.name), ["a 9.png", "a 10.png", "z.mp4"], "files sorted like Finder")
+        expect(withFiles.folders[1].files.map(\.name), ["cover.jpg"], "file beside the notes of its folder")
+        expect(withFiles.folders[1].notes.map(\.title), ["Kyoto"], "notes unchanged")
+        expect(withFiles.totalCount, 6, "totalCount still counts notes only")
+        expect(withFiles.itemCount, 10, "itemCount counts files too")
+
         expect(NoteTreeBuilder.ancestorIds(ofRelativePath: "/"), [], "root note has no ancestors")
         expect(NoteTreeBuilder.ancestorIds(ofRelativePath: "/产品思考/草稿"),
                ["/产品思考", "/产品思考/草稿"], "ancestor chain")

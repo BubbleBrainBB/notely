@@ -5,6 +5,8 @@ import Observation
 @Observable
 final class FileNoteStore {
     var notes: [FileNote] = []
+    /// Images, videos and PDFs in the library, shown in the sidebar too.
+    var files: [LibraryFile] = []
     var workspaceURL: URL?
     var isOpen: Bool { workspaceURL != nil }
     /// False from opening a folder until its first scan lands, so the empty
@@ -49,6 +51,7 @@ final class FileNoteStore {
         reloadDebounceItem = nil
         reloadGeneration += 1
         notes = []
+        files = []
         hasLoadedNotes = false
         workspaceURL = nil
         ImageLoader.shared.setWorkspaceURL(nil)
@@ -64,13 +67,14 @@ final class FileNoteStore {
         let generation = reloadGeneration
 
         reloadQueue.async { [weak self] in
-            let result = Self.scanNotes(in: workspaceURL, pinnedFiles: pinnedFiles)
+            let result = Self.scanLibrary(in: workspaceURL, pinnedFiles: pinnedFiles)
 
             DispatchQueue.main.async {
                 guard let self,
                       self.reloadGeneration == generation,
                       self.workspaceURL == workspaceURL else { return }
-                self.notes = result
+                self.notes = result.notes
+                if self.files != result.files { self.files = result.files }
                 self.hasLoadedNotes = true
             }
         }
@@ -377,20 +381,29 @@ final class FileNoteStore {
         return Self.relativePath(of: url, in: workspaceURL)
     }
 
-    private static func scanNotes(in workspaceURL: URL, pinnedFiles: Set<String>) -> [FileNote] {
+    private static func scanLibrary(in workspaceURL: URL,
+                                    pinnedFiles: Set<String>) -> (notes: [FileNote], files: [LibraryFile]) {
         let fm = FileManager.default
         var result: [FileNote] = []
+        var files: [LibraryFile] = []
 
         guard let enumerator = fm.enumerator(
             at: workspaceURL,
             includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .isDirectoryKey],
             options: [.skipsHiddenFiles]
         ) else {
-            return []
+            return ([], [])
         }
 
         for case let fileURL as URL in enumerator {
             let ext = fileURL.pathExtension.lowercased()
+            if let kind = LibraryFile.kind(of: fileURL) {
+                let updatedAt = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate ?? Date()
+                files.append(LibraryFile(id: fileURL.path, url: fileURL, kind: kind, updatedAt: updatedAt,
+                                         relativePath: relativePath(of: fileURL, in: workspaceURL)))
+                continue
+            }
             guard ext == "md" || ext == "markdown" else { continue }
 
             let attrs = try? fm.attributesOfItem(atPath: fileURL.path)
@@ -411,10 +424,11 @@ final class FileNoteStore {
             ))
         }
 
-        return result.sorted { lhs, rhs in
+        let notes = result.sorted { lhs, rhs in
             if lhs.pinned != rhs.pinned { return lhs.pinned }
             return lhs.updatedAt > rhs.updatedAt
         }
+        return (notes, files)
     }
 
     private static func relativePath(of url: URL, in workspaceURL: URL) -> String {

@@ -333,7 +333,7 @@ enum BodyFace {
 }
 
 /// Hides the system's toolbar title where NoteTitleHeader replaces it.
-private struct RemovesSystemTitle: ViewModifier {
+struct RemovesSystemTitle: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26, *) {
             content.toolbar(removing: .title)
