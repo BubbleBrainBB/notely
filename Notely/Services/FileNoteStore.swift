@@ -120,6 +120,56 @@ final class FileNoteStore {
         }
     }
 
+    // MARK: - Memos (design board ㉛)
+
+    /// The day files of the Memos folder.
+    var memoNotes: [FileNote] {
+        notes.filter { $0.relativePath == "/" + MemoFormat.folderName && MemoFormat.isDay($0.filename) }
+    }
+
+    /// Every memo, newest day first and, within a day, latest first.
+    var memos: [Memo] {
+        memoNotes
+            .sorted { $0.filename > $1.filename }
+            .flatMap { MemoFormat.parse($0.content, day: $0.filename).reversed() }
+    }
+
+    func memoNote(forDay day: String) -> FileNote? {
+        memoNotes.first { $0.filename == day }
+    }
+
+    /// Adds a memo to today's file, creating it as needed.
+    func addMemo(_ text: String, at date: Date = Date()) {
+        guard let workspaceURL, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let day = MemoFormat.day(of: date)
+        if let note = memoNote(forDay: day) {
+            saveContent(MemoFormat.appending(text, at: MemoFormat.time(of: date), to: note.content), to: note.id)
+            return
+        }
+        guard let url = try? MemoFile.append(text, at: date, in: workspaceURL) else { return }
+        recentlySavedPaths[url.path] = Date()
+        let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        notes.insert(FileNote(id: url.path, url: url, title: TitleExtractor.extract(from: content),
+                              content: content, tags: TagExtractor.frontmatterTags(from: content),
+                              createdAt: date, updatedAt: date, pinned: false,
+                              relativePath: relativePath(of: url)), at: 0)
+    }
+
+    func updateMemo(_ memo: Memo, text: String) {
+        guard let note = memoNote(forDay: memo.day) else { return }
+        saveContent(MemoFormat.replacing(memo: memo.index, with: text, in: note.content), to: note.id)
+    }
+
+    func deleteMemo(_ memo: Memo) {
+        guard let note = memoNote(forDay: memo.day) else { return }
+        let content = MemoFormat.removing(memo: memo.index, from: note.content)
+        if content.isEmpty {
+            deleteNote(note.id)
+        } else {
+            saveContent(content, to: note.id)
+        }
+    }
+
     func deleteNote(_ noteId: String) {
         guard let note = notes.first(where: { $0.id == noteId }) else { return }
         try? FileManager.default.removeItem(at: note.url)

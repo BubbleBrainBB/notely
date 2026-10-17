@@ -41,7 +41,13 @@ struct AppShellView: View {
                     // the title and toolbar icons sit on the ground above it,
                     // and the page, inset 8 on the other three sides, holds
                     // only the text.
-                    EditorContainerView()
+                    Group {
+                        if appModel.showMemos {
+                            MemosView()
+                        } else {
+                            EditorContainerView()
+                        }
+                    }
                         .clipShape(Self.pageShape)
                         .background {
                             Self.pageShape

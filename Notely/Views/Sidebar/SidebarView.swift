@@ -17,8 +17,13 @@ struct SidebarView: View {
     /// window doesn't.)
     static let leadingInset: CGFloat = 8
 
+    /// The notes tree's notes: everything but the Memos folder, which has its
+    /// own page (the Memos row) rather than showing up twice.
     private var sortedNotes: [FileNote] {
-        NoteSorting.sorted(store.notes, by: appModel.sortMode)
+        let memoFolder = "/" + MemoFormat.folderName
+        return NoteSorting.sorted(store.notes.filter {
+            $0.relativePath != memoFolder && !$0.relativePath.hasPrefix(memoFolder + "/")
+        }, by: appModel.sortMode)
     }
 
     var body: some View {
@@ -73,11 +78,16 @@ struct SidebarView: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SidebarSearchField()
-                .padding(.leading, Self.leadingInset)
-                .padding(.trailing, 8)
-                .padding(.top, 4)
-                .padding(.bottom, 10)
+            VStack(alignment: .leading, spacing: 1) {
+                SidebarSearchField()
+                SidebarRow(icon: .glyph(.memo), title: "Memos", isSelected: appModel.showMemos) {
+                    appModel.openMemos()
+                }
+            }
+            .padding(.leading, Self.leadingInset)
+            .padding(.trailing, 8)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -162,22 +172,14 @@ private struct LibraryHeader: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            // The name folds and unfolds the library (design board ㉚ C). Its
-            // icon turns into the disclosure arrow on hover — and stays an
-            // arrow while folded — like the folder rows below.
+            // The name folds and unfolds the library (design board ㉚). The
+            // icon stays the library icon — no disclosure arrow, on hover or
+            // folded; the tree showing or not is the state.
             Button(action: toggle) {
                 HStack(spacing: NoteTreeIndent.iconGap) {
-                    Group {
-                        if isHovering || isCollapsed {
-                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.secondaryText)
-                        } else {
-                            ShiyeIcon(.library, size: NoteTreeIndent.icon)
-                                .foregroundColor(.iconMuted)
-                        }
-                    }
-                    .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+                    ShiyeIcon(.library, size: NoteTreeIndent.icon)
+                        .foregroundColor(.iconMuted)
+                        .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
                     Text(name)
                         .font(.notely(13, weight: .medium))
                         .foregroundColor(.primaryText)
@@ -480,20 +482,12 @@ private struct FolderRow: View {
     var body: some View {
         Button(action: toggle) {
             HStack(spacing: NoteTreeIndent.iconGap) {
-                // Hovering swaps the folder for the disclosure arrow, so the
-                // arrow never takes up room of its own.
-                Group {
-                    if isHovering {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.secondaryText)
-                    } else {
-                        FolderGlyph(open: isExpanded)
-                            .stroke(isExpanded ? Color.secondaryText : Color.iconMuted,
-                                    style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
-                    }
-                }
-                .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+                // No disclosure arrow: the folder itself shows the state,
+                // open while expanded and closed while folded.
+                FolderGlyph(open: isExpanded)
+                    .stroke(isExpanded ? Color.secondaryText : Color.iconMuted,
+                            style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
+                    .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
                 Text(folder.name)
                     .font(.notely(13, weight: isExpanded ? .medium : .regular))
                     .foregroundColor(isExpanded || isHovering ? .primaryText : .secondaryText)

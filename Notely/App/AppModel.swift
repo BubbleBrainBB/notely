@@ -10,6 +10,8 @@ final class AppModel {
     var isSearchPresented: Bool = false
     var sortMode: SortMode = SortMode(rawValue: AppSettings.sortMode) ?? .updatedDesc
     var showSettings: Bool = false
+    /// The Memos page is showing in place of the editor (design board ㉛).
+    var showMemos: Bool = false
     /// Bound to the split view, so the system sidebar toggle in the window
     /// toolbar and the ⌥⌘S / ⇧⌘F commands share one source of truth.
     var columnVisibility: NavigationSplitViewVisibility = .all
@@ -29,8 +31,16 @@ final class AppModel {
 
     func openNote(_ id: String?) {
         showSettings = false
+        showMemos = false
         selectedNoteId = id
         isSearchPresented = false
+    }
+
+    func openMemos() {
+        showSettings = false
+        isSearchPresented = false
+        selectedNoteId = nil
+        showMemos = true
     }
 
     func presentSearch() { isSearchPresented = true }

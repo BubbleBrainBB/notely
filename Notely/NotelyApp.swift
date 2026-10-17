@@ -89,6 +89,9 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("n", modifiers: .command)
 
+            // The quick memo panel; ⌃⌥N opens it from anywhere (QuickCapture).
+            Button("New Memo") { QuickCapture.shared.show() }
+
             Button("New Window") {
                 openWindow(id: "main")
             }

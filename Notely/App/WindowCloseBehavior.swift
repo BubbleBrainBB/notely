@@ -14,6 +14,11 @@ final class NotelyAppDelegate: NSObject, NSApplicationDelegate {
         WindowCloseController.shared.beginLaunch()
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // ⌃⌥N and the menu bar icon open the quick memo panel (design ㉛ ②).
+        QuickCapture.shared.install()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Self.isQuitting = true
         return .terminateNow

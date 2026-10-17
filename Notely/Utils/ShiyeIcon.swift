@@ -15,6 +15,8 @@ enum ShiyeGlyph {
     case library
     /// `#`, as tags are written in the notes.
     case tag
+    /// A speech bubble with two lines: a memo (design board ㉛).
+    case memo
     /// A circled `i`: note info.
     case info
     /// Three dots: more actions.
@@ -78,6 +80,22 @@ enum ShiyeGlyph {
             roundedRect(&path, 4.5, 6.5, 12, 14, 2)
             line(&path, (7.5, 11.5), (13.5, 11.5))
             line(&path, (7.5, 15), (11.5, 15))
+
+        case .memo:
+            path.move(to: p(7, 4.5))
+            path.addLine(to: p(17, 4.5))
+            path.addQuadCurve(to: p(19, 6.5), control: p(19, 4.5))
+            path.addLine(to: p(19, 14.5))
+            path.addQuadCurve(to: p(17, 16.5), control: p(19, 16.5))
+            path.addLine(to: p(11, 16.5))
+            path.addLine(to: p(7, 19.5))
+            path.addLine(to: p(7, 16.5))
+            path.addQuadCurve(to: p(5, 14.5), control: p(5, 16.5))
+            path.addLine(to: p(5, 6.5))
+            path.addQuadCurve(to: p(7, 4.5), control: p(5, 4.5))
+            path.closeSubpath()
+            line(&path, (8.5, 9), (15.5, 9))
+            line(&path, (8.5, 12), (13, 12))
 
         case .tag:
             line(&path, (9.5, 4), (8, 20))
