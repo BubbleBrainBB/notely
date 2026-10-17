@@ -6,10 +6,15 @@ struct EditorContainerView: View {
     @Environment(FileNoteStore.self) var store
 
     var body: some View {
+        let selected = appModel.selectedNoteId.flatMap { id in store.notes.first { $0.id == id } }
+        // No note open in a library that has notes: the page is a blank draft
+        // (design board ㉝ E). Same id before and after its first save, so the
+        // editor — and the caret — carry straight on as it becomes a note.
+        let draft = selected == nil && appModel.selectedNoteId == nil
+            && store.hasLoadedNotes && !store.notes.isEmpty ? store.draftNote() : nil
         Group {
-            if let noteId = appModel.selectedNoteId,
-               let note = store.notes.first(where: { $0.id == noteId }) {
-                EditorView(note: note)
+            if let note = selected ?? draft {
+                EditorView(note: note, isDraft: selected == nil)
                     .id(note.id)
             } else {
                 EmptyEditorView()
@@ -19,47 +24,72 @@ struct EditorContainerView: View {
     }
 }
 
-/// Shown when no note is selected.
+/// Shown when there's no note and no draft (design board ㉞ ②): while the
+/// library loads, nothing; in a library with no notes yet, a line about the
+/// folder and a way to write the first one.
 struct EmptyEditorView: View {
-    @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                ShiyeIcon(.note, size: 28)
-                    .foregroundColor(.iconMuted)
-                    .frame(width: 56, height: 56)
-                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.sidebarBg))
-
-                VStack(spacing: 4) {
-                    Text("No note open")
-                        .font(.notely(15, weight: .semibold))
-                        .foregroundColor(.primaryText)
-                    Text("Pick one from the sidebar, or start a new one.")
-                        .font(.notely(13))
-                        .foregroundColor(.tertiaryText)
-                }
-
-                Button {
-                    appModel.openNote(store.createNote()?.id)
-                } label: {
-                    Text("New Note")
-                        .font(.notely(13, weight: .medium))
-                        .foregroundColor(.primaryText)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.surface))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(Color.controlBorder, lineWidth: 1)
-                        )
-                }
-                .buttonStyle(.plain)
+        Group {
+            if store.hasLoadedNotes {
+                EmptyLibraryPage()
+            } else {
+                Color.clear
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.editorBg)
         .modifier(NoteToolbar())
+    }
+}
+
+/// A library folder with no notes in it yet.
+private struct EmptyLibraryPage: View {
+    @Environment(AppModel.self) var appModel
+    @Environment(FileNoteStore.self) var store
+    @AppStorage("notely.editorFont") private var editorFontName: String = "System"
+    @State private var isHoveringReveal = false
+
+    private var name: String { store.workspaceURL?.lastPathComponent ?? "This folder" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(BodyFace.text("No notes here yet", fontName: editorFontName, size: 19, weight: .semibold))
+                .foregroundColor(.primaryText)
+            Text("“\(name)” is a plain folder. Write here, or drop .md files into it — they show up on the left.")
+                .font(.notely(13))
+                .lineSpacing(4)
+                .foregroundColor(.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
+
+            HStack(alignment: .firstTextBaseline, spacing: 22) {
+                Button { appModel.openNote(store.createNote()?.id) } label: {
+                    HStack(spacing: 7) {
+                        ShiyeIcon(.newNote, size: 15)
+                        Text("Write the First Note").fontWeight(.medium)
+                        Text("⌘N").foregroundColor(.faintText)
+                    }
+                    .font(.notely(13))
+                    .foregroundColor(.primaryText)
+                    .padding(.bottom, 3)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Color.primaryText).frame(height: 1) }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if let url = store.workspaceURL {
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                        .buttonStyle(.plain)
+                        .font(.notely(13))
+                        .foregroundColor(isHoveringReveal ? .primaryText : .tertiaryText)
+                        .onHover { isHoveringReveal = $0 }
+                }
+            }
+            .padding(.top, 24)
+        }
+        .frame(width: 440, alignment: .leading)
+        .padding(.top, 140)
     }
 }

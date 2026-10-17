@@ -8,7 +8,7 @@ struct AppShellView: View {
     static let sidebarWidth: CGFloat = 240
     /// Gap between the editor's page and the window edges.
     static let pageInset: CGFloat = 8
-    static let pageShape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+    static let pageRadius: CGFloat = 12
 
     /// Minimum width for the editor detail column: the capped text column plus
     /// its side insets. Enforced as the detail column's min and folded into the
@@ -20,78 +20,93 @@ struct AppShellView: View {
 
     var body: some View {
         @Bindable var appModel = appModel
-        if !store.isOpen {
-            FolderOpenView()
-        } else {
-            ZStack(alignment: .top) {
-                NavigationSplitView(columnVisibility: $appModel.columnVisibility) {
-                    SidebarView()
-                        // Draggable from 200 to 420; opens at 240; dragging
-                        // narrower collapses it. Snapping: SidebarWidthPolicy /
-                        // SidebarSplitHook. The minimum sits a little under 200:
-                        // positioning the divider exactly at the minimum makes the
-                        // split view collapse.
-                        .navigationSplitViewColumnWidth(min: SidebarWidthPolicy.minimum - 8, ideal: Self.sidebarWidth,
-                                                        max: SidebarWidthPolicy.max)
-                        // Our own toggle instead (SidebarView adds it; it stays
-                        // beside the traffic lights when the sidebar collapses).
-                        .toolbar(removing: .sidebarToggle)
-                } detail: {
-                    // The page floats on the window ground (design board ㉘ D6):
-                    // the title and toolbar icons sit on the ground above it,
-                    // and the page, inset 8 on the other three sides, holds
-                    // only the text.
-                    Group {
-                        if appModel.showMemos {
-                            MemosView()
-                        } else {
-                            EditorContainerView()
+        let framed = appModel.frameRevealed
+        let pageShape = RoundedRectangle(cornerRadius: framed ? Self.pageRadius : 0, style: .continuous)
+        Group {
+            if !store.isOpen {
+                FolderOpenView()
+                    .transition(.opacity)
+            } else {
+                ZStack(alignment: .top) {
+                    NavigationSplitView(columnVisibility: $appModel.columnVisibility) {
+                        SidebarView()
+                            // Draggable from 200 to 420; opens at 240; dragging
+                            // narrower collapses it. Snapping: SidebarWidthPolicy /
+                            // SidebarSplitHook. The minimum sits a little under 200:
+                            // positioning the divider exactly at the minimum makes the
+                            // split view collapse.
+                            .navigationSplitViewColumnWidth(min: SidebarWidthPolicy.minimum - 8, ideal: Self.sidebarWidth,
+                                                            max: SidebarWidthPolicy.max)
+                            // Our own toggle instead (SidebarView adds it; it stays
+                            // beside the traffic lights when the sidebar collapses).
+                            .toolbar(removing: .sidebarToggle)
+                    } detail: {
+                        // The page floats on the window ground (design board ㉘ D6):
+                        // the title and toolbar icons sit on the ground above it,
+                        // and the page, inset 8 on the other three sides, holds
+                        // only the text.
+                        Group {
+                            if appModel.showMemos {
+                                MemosView()
+                            } else {
+                                EditorContainerView()
+                            }
                         }
+                            .clipShape(pageShape)
+                            .background {
+                                pageShape
+                                    .fill(Color.editorBg)
+                                    .shadow(color: .black.opacity(framed ? 0.05 : 0), radius: 1.5, y: 1)
+                                    .shadow(color: .black.opacity(framed ? 0.04 : 0), radius: 8, y: 4)
+                            }
+                            .overlay {
+                                pageShape
+                                    .strokeBorder(Color.black.opacity(framed ? 0.06 : 0), lineWidth: 1)
+                                    .allowsHitTesting(false)
+                            }
+                            // Opened from the welcome page, the page starts as the
+                            // whole white window and settles into its frame.
+                            .padding([.leading, .trailing, .bottom], framed ? Self.pageInset : 0)
+                            .background(appModel.groundColor)
+                            .toolbarBackground(.hidden, for: .windowToolbar)
+                        .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
                     }
-                        .clipShape(Self.pageShape)
-                        .background {
-                            Self.pageShape
-                                .fill(Color.editorBg)
-                                .shadow(color: .black.opacity(0.05), radius: 1.5, y: 1)
-                                .shadow(color: .black.opacity(0.04), radius: 8, y: 4)
-                        }
-                        .overlay {
-                            Self.pageShape
-                                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
-                                .allowsHitTesting(false)
-                        }
-                        .padding([.leading, .trailing, .bottom], Self.pageInset)
-                        .background(Color.windowGround)
-                        .toolbarBackground(.hidden, for: .windowToolbar)
-                    .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
-                }
-                .navigationSplitViewStyle(.balanced)
-                .frame(minWidth: Self.sidebarWidth + detailMinWidth, minHeight: 600)
+                    .navigationSplitViewStyle(.balanced)
+                    .frame(minWidth: Self.sidebarWidth + detailMinWidth, minHeight: 600)
 
-                // Spotlight-style quick search, floating over the window.
-                if appModel.isSearchPresented {
-                    Color.black.opacity(0.12)
-                        .ignoresSafeArea()
-                        .onTapGesture { appModel.dismissSearch() }
-                        .transition(.opacity)
-                    SearchPopover()
-                        .padding(.top, 92)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-                }
+                    // Spotlight-style quick search, floating over the window.
+                    if appModel.isSearchPresented {
+                        Color.black.opacity(0.12)
+                            .ignoresSafeArea()
+                            .onTapGesture { appModel.dismissSearch() }
+                            .transition(.opacity)
+                        SearchPopover()
+                            .padding(.top, 92)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                    }
 
-                // Settings: a card over the dimmed window (design board ㉑ B).
-                if appModel.showSettings {
-                    Color.black.opacity(0.18)
-                        .ignoresSafeArea()
-                        .onTapGesture { appModel.showSettings = false }
-                        .transition(.opacity)
-                    SettingsModal()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    // Settings: a card over the dimmed window (design board ㉑ B).
+                    if appModel.showSettings {
+                        Color.black.opacity(0.18)
+                            .ignoresSafeArea()
+                            .onTapGesture { appModel.showSettings = false }
+                            .transition(.opacity)
+                        SettingsModal()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    }
+                }
+                .animation(.easeOut(duration: 0.16), value: appModel.isSearchPresented)
+                .animation(.easeOut(duration: 0.16), value: appModel.showSettings)
+                .transition(.opacity)
+                .onAppear {
+                    // Let the shell lay out as the plain sheet first, then frame it.
+                    if !appModel.frameRevealed {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { appModel.revealFrame() }
+                    }
                 }
             }
-            .animation(.easeOut(duration: 0.16), value: appModel.isSearchPresented)
-            .animation(.easeOut(duration: 0.16), value: appModel.showSettings)
         }
+        .animation(.easeOut(duration: 0.2), value: store.isOpen)
     }
 }

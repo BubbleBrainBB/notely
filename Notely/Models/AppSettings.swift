@@ -13,6 +13,7 @@ enum AppSettings {
     static let autoUpdatesKey = "notely.autoUpdates"
     static let accentColorKey = "notely.accentColor"
     static let workspacePathKey = "notely.workspacePath"
+    static let recentWorkspacesKey = "notely.recentWorkspaces"
     /// Only read to migrate away from the removed theme presets.
     static let appThemeKey = "notely.appTheme"
     static let editorFontKey = "notely.editorFont"
@@ -83,6 +84,21 @@ enum AppSettings {
     static var workspacePath: String {
         get { UserDefaults.standard.string(forKey: workspacePathKey) ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: workspacePathKey) }
+    }
+
+    /// Folders opened before, most recent first, for the welcome page's
+    /// Recent list. Before the list existed only the last folder was kept,
+    /// so that one seeds it.
+    static var recentWorkspaces: [String] {
+        get {
+            if let list = UserDefaults.standard.stringArray(forKey: recentWorkspacesKey) { return list }
+            return workspacePath.isEmpty ? [] : [workspacePath]
+        }
+        set { UserDefaults.standard.set(newValue, forKey: recentWorkspacesKey) }
+    }
+
+    static func noteRecentWorkspace(_ path: String) {
+        recentWorkspaces = Array(([path] + recentWorkspaces.filter { $0 != path }).prefix(5))
     }
 
     // MARK: - Appearance

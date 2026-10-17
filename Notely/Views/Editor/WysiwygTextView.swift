@@ -70,6 +70,10 @@ struct WysiwygEditor: NSViewRepresentable {
     let editorWidth: String
     var spellCheck = AppSettings.defaultSpellCheck
     var smartPunctuation = AppSettings.defaultSmartPunctuation
+    /// A draft's faint "Title" and hint, drawn while it is still untouched.
+    var draftPlaceholder: WysiwygTextView.DraftPlaceholder? = nil
+    /// Take keyboard focus, caret at the end, once the editor is on screen.
+    var focusesOnAppear = false
     let onTextChange: (String) -> Void
 
     /// Settings › Editor. Set only on change: assigning restarts the checker.
@@ -109,6 +113,8 @@ struct WysiwygEditor: NSViewRepresentable {
         textView.lineHeight = lineHeight
         textView.fontName = fontName
         textView.editorWidth = editorWidth
+        textView.draftPlaceholder = draftPlaceholder
+        textView.focusesOnAppear = focusesOnAppear
         Self.applyTypingOptions(textView, spellCheck: spellCheck, smartPunctuation: smartPunctuation)
         textView.delegate = context.coordinator
         textView.onTextChange = { newText in
@@ -130,6 +136,10 @@ struct WysiwygEditor: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         guard let textView = nsView.documentView as? WysiwygTextView else { return }
         Self.applyTypingOptions(textView, spellCheck: spellCheck, smartPunctuation: smartPunctuation)
+        if textView.draftPlaceholder != draftPlaceholder {
+            textView.draftPlaceholder = draftPlaceholder
+            textView.needsDisplay = true
+        }
 
         // Re-bind the text-change callback to the CURRENT note's EditorView. The
         // Coordinator is created once (makeCoordinator), so without this a reused
@@ -199,7 +209,18 @@ final class WysiwygTextView: NSTextView {
     var lineHeight: CGFloat = 1.75
     var fontName: String = "System"
     var onTextChange: ((String) -> Void)?
+    var draftPlaceholder: DraftPlaceholder?
+    var focusesOnAppear = false
     private var engine: WysiwygEngine?
+
+    /// What an untouched draft shows (design board ㉝ E): `title` faint in the
+    /// title heading's face right where the typed title will go, and `hint`
+    /// on the line below. Drawn only while the text is still the draft's
+    /// empty heading, so it disappears with the first keystroke.
+    struct DraftPlaceholder: Equatable {
+        var title: String
+        var hint: String
+    }
     private var isRestyling = false
 
     /// Font/line-height the cached `engine` was built for. The engine compiles
@@ -459,6 +480,36 @@ final class WysiwygTextView: NSTextView {
         super.viewDidMoveToWindow()
         Diag.log("viewDidMoveToWindow window=\(window != nil) frame=\(frame) isEditable=\(isEditable)")
         if window != nil { restyle() }
+        if window != nil, focusesOnAppear {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                window.makeFirstResponder(self)
+                self.setSelectedRange(NSRange(location: (self.string as NSString).length, length: 0))
+            }
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let placeholder = draftPlaceholder, string == FileNoteStore.draftContent,
+              let layoutManager, let textContainer else { return }
+        // Just past the (possibly hidden) "# ", on the heading's line.
+        let glyphs = layoutManager.glyphRange(forCharacterRange: NSRange(location: 0, length: 2), actualCharacterRange: nil)
+        let line = layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
+        let marks = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+        let origin = textContainerOrigin
+        let faint = NSColor(Color.faintIcon)
+
+        let titleFont = WysiwygEngine.resolveFont(name: fontName, size: 30, weight: .semibold)
+        let title = NSAttributedString(string: placeholder.title,
+                                       attributes: [.font: titleFont, .foregroundColor: faint])
+        let titleY = origin.y + line.minY + max(0, (line.height - titleFont.ascender + titleFont.descender) / 2)
+        title.draw(at: NSPoint(x: origin.x + marks.maxX, y: titleY))
+
+        let hintFont = WysiwygEngine.resolveFont(name: fontName, size: fontSize)
+        let hint = NSAttributedString(string: placeholder.hint,
+                                      attributes: [.font: hintFont, .foregroundColor: faint])
+        hint.draw(at: NSPoint(x: origin.x + line.minX, y: origin.y + line.maxY + 14))
     }
 
     private func rebuildEngine() {

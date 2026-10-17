@@ -3,6 +3,7 @@ import SwiftUI
 struct EditorView: View {
     let note: FileNote
     @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
     @State private var displayedText: String
     /// The content the editor last loaded or saved — its view of what is on disk.
     /// Used to tell an unsaved local edit apart from an external change.
@@ -35,8 +36,13 @@ struct EditorView: View {
         }
     }
 
-    init(note: FileNote) {
+    /// A blank page not yet on disk (design board ㉝ E): shows a placeholder,
+    /// takes focus, and becomes a note in the library at its first save.
+    var isDraft = false
+
+    init(note: FileNote, isDraft: Bool = false) {
         self.note = note
+        self.isDraft = isDraft
         let initialText = note.content
         _displayedText = State(initialValue: initialText)
         _lastSyncedContent = State(initialValue: initialText)
@@ -55,6 +61,10 @@ struct EditorView: View {
                     editorWidth: editorWidth,
                     spellCheck: spellCheck,
                     smartPunctuation: smartPunctuation,
+                    draftPlaceholder: isDraft
+                        ? .init(title: "Title", hint: "Start typing — the note is saved once you write something.")
+                        : nil,
+                    focusesOnAppear: isDraft,
                     onTextChange: handleTextChange
                 )
                 .frame(maxWidth: .infinity)
@@ -67,7 +77,9 @@ struct EditorView: View {
             }
         }
         .background(Color.editorBg)
-        .modifier(NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
+        .modifier(isDraft
+                  ? NoteToolbar(emptyTitle: "New Note")
+                  : NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
         .onAppear {
             loadNote()
         }
@@ -128,7 +140,10 @@ struct EditorView: View {
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            store.saveContent(content, to: targetId)
+            // A draft's first save puts it in the library: select it there.
+            if store.saveContent(content, to: targetId), appModel.selectedNoteId == nil {
+                appModel.selectedNoteId = targetId
+            }
         }
     }
 
@@ -141,6 +156,8 @@ struct NoteToolbar: ViewModifier {
     var note: FileNote? = nil
     var wordCount = 0
     var charCount = 0
+    /// The title shown when there's no note.
+    var emptyTitle = "Notes"
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
     @State private var showsInfo = false
@@ -148,7 +165,7 @@ struct NoteToolbar: ViewModifier {
     /// The file name: notes are files, and clipped articles often have no
     /// heading, so their first line makes a poor title.
     private var title: String {
-        note?.filename ?? "Notes"
+        note?.filename ?? emptyTitle
     }
 
     /// "Clippings / AI · Edited Oct 9"
@@ -289,11 +306,20 @@ struct NoteTitleHeader: ToolbarContent {
         }
     }
 
-    /// `title` in the body family at 13.5pt medium, with Han runs re-set in
-    /// the paired CJK face exactly as the editor does.
+    /// `title` in the body family at 13.5pt medium.
     static func styledTitle(_ title: String, fontName: String) -> AttributedString {
-        let font = WysiwygEngine.resolveFont(name: fontName, size: 13.5, weight: .medium)
-        let storage = NSTextStorage(string: title, attributes: [.font: font])
+        BodyFace.text(title, fontName: fontName, size: 13.5, weight: .medium)
+    }
+}
+
+/// Text set in a body face — the editor's, New York with 宋体 by default —
+/// with Han runs re-set in the paired CJK face exactly as the editor does,
+/// so serif UI text (the header title, the empty pages) reads like the page.
+enum BodyFace {
+    static func text(_ string: String, fontName: String, size: CGFloat,
+                     weight: NSFont.Weight = .regular) -> AttributedString {
+        let font = WysiwygEngine.resolveFont(name: fontName, size: size, weight: weight)
+        let storage = NSTextStorage(string: string, attributes: [.font: font])
         CompositeFont(baseFont: font, familyName: fontName).apply(to: storage)
 
         var result = AttributedString()

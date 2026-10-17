@@ -18,6 +18,25 @@ final class AppModel {
 
     var isSidebarVisible: Bool { columnVisibility != .detailOnly }
 
+    /// False while a library opened from the welcome page is handing over to
+    /// the main window: the shell starts as one plain white sheet — like the
+    /// welcome page — and `revealFrame()` animates it into the window ground
+    /// with the page settling into its frame.
+    private(set) var frameRevealed = true
+
+    /// The window ground: plain white during the welcome hand-over.
+    var groundColor: Color { frameRevealed ? .windowGround : .editorBg }
+
+    /// Call right before opening a library from the welcome page.
+    func beginFrameIntro() {
+        frameRevealed = false
+    }
+
+    func revealFrame() {
+        guard !frameRevealed else { return }
+        withAnimation(.easeInOut(duration: 0.5)) { frameRevealed = true }
+    }
+
     func toggleSidebar() {
         withAnimation(.easeInOut(duration: 0.2)) {
             columnVisibility = isSidebarVisible ? .detailOnly : .all

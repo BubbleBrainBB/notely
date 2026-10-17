@@ -79,7 +79,12 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
         let lastPath = AppSettings.workspacePath
         guard !lastPath.isEmpty else { return }
         let url = URL(fileURLWithPath: lastPath)
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        // Not silently back to the welcome page as if the notes were gone:
+        // the welcome page says which folder is missing and offers to find it.
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            store.missingWorkspace = url
+            return
+        }
         store.openWorkspace(at: url)
     }
 

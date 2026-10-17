@@ -7,6 +7,13 @@ final class FileNoteStore {
     var notes: [FileNote] = []
     var workspaceURL: URL?
     var isOpen: Bool { workspaceURL != nil }
+    /// False from opening a folder until its first scan lands, so the empty
+    /// library page doesn't flash while the notes load.
+    var hasLoadedNotes = false
+    /// The folder the last session used, when it can't be found at launch —
+    /// moved, renamed, deleted, or on a disk that isn't connected (design
+    /// board ㉞ ④). Opening any folder clears it.
+    var missingWorkspace: URL?
 
     private var eventStream: FSEventStreamRef?
     /// Paths this store wrote itself, with the time of the write. Lets us ignore
@@ -27,8 +34,10 @@ final class FileNoteStore {
     func openWorkspace(at url: URL) {
         closeWorkspace()
         workspaceURL = url
+        missingWorkspace = nil
         ImageLoader.shared.setWorkspaceURL(url)
         AppSettings.workspacePath = url.path
+        AppSettings.noteRecentWorkspace(url.path)
         loadPinnedFiles()
         reloadNotes()
         startWatching()
@@ -40,6 +49,7 @@ final class FileNoteStore {
         reloadDebounceItem = nil
         reloadGeneration += 1
         notes = []
+        hasLoadedNotes = false
         workspaceURL = nil
         ImageLoader.shared.setWorkspaceURL(nil)
         ImageLoader.shared.setBaseURL(nil)
@@ -61,11 +71,36 @@ final class FileNoteStore {
                       self.reloadGeneration == generation,
                       self.workspaceURL == workspaceURL else { return }
                 self.notes = result
+                self.hasLoadedNotes = true
             }
         }
     }
 
     // MARK: - File operations
+
+    // MARK: - Draft (design board ㉝ E)
+
+    /// What a draft starts as: an empty title heading, the caret after it.
+    static let draftContent = "# "
+    /// The id of the last draft handed out; its first save writes the file.
+    @ObservationIgnored private var draftId: String?
+
+    /// The page shown when no note is open: a blank note at the library's
+    /// top level, named like New Note's, whose file is only written once
+    /// something is typed — leave without writing and nothing is kept.
+    func draftNote() -> FileNote? {
+        guard let workspaceURL else { return nil }
+        var url = workspaceURL.appendingPathComponent("Untitled.md")
+        var counter = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = workspaceURL.appendingPathComponent("Untitled \(counter).md")
+            counter += 1
+        }
+        draftId = url.path
+        return FileNote(id: url.path, url: url, title: "", content: Self.draftContent, tags: [],
+                        createdAt: Date(), updatedAt: Date(), pinned: false,
+                        relativePath: relativePath(of: url))
+    }
 
     @discardableResult
     func createNote(title: String? = nil) -> FileNote? {
@@ -105,8 +140,13 @@ final class FileNoteStore {
         return note
     }
 
-    func saveContent(_ content: String, to noteId: String) {
-        guard let note = notes.first(where: { $0.id == noteId }) else { return }
+    /// Returns true when this save wrote a draft's file for the first time
+    /// (the note is in the library from now on).
+    @discardableResult
+    func saveContent(_ content: String, to noteId: String) -> Bool {
+        guard let note = notes.first(where: { $0.id == noteId }) else {
+            return saveDraft(content, id: noteId)
+        }
         // Record before writing so the watcher event this triggers is recognized
         // as our own and does not cause a redundant rescan.
         recentlySavedPaths[note.url.path] = Date()
@@ -118,6 +158,21 @@ final class FileNoteStore {
             notes[idx].tags = TagExtractor.frontmatterTags(from: content)
             notes[idx].updatedAt = Date()
         }
+        return false
+    }
+
+    private func saveDraft(_ content: String, id: String) -> Bool {
+        guard id == draftId, workspaceURL != nil,
+              !FileManager.default.fileExists(atPath: id) else { return false }
+        draftId = nil
+        let url = URL(fileURLWithPath: id)
+        recentlySavedPaths[url.path] = Date()
+        guard (try? content.write(to: url, atomically: true, encoding: .utf8)) != nil else { return false }
+        notes.insert(FileNote(id: url.path, url: url, title: TitleExtractor.extract(from: content),
+                              content: content, tags: TagExtractor.frontmatterTags(from: content),
+                              createdAt: Date(), updatedAt: Date(), pinned: false,
+                              relativePath: relativePath(of: url)), at: 0)
+        return true
     }
 
     // MARK: - Memos (design board ㉛)

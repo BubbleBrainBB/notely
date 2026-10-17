@@ -31,7 +31,7 @@ struct SidebarView: View {
         .frame(minWidth: 0, maxWidth: .infinity)
         // On the window ground, no divider: the editor's floating page is
         // what separates the two columns (design board ㉗ D).
-        .background(Color.windowGround)
+        .background(appModel.groundColor)
         // The hide button sits in the sidebar's part of the toolbar, on the
         // line of the traffic lights and the note title. It stays there when
         // the sidebar collapses, so it is always ONE item: swapping it for a
@@ -115,7 +115,8 @@ struct SidebarView: View {
         }
 
         let tree = NoteTreeBuilder.build(from: sortedNotes)
-        if libraryCollapsed {
+        if libraryCollapsed || !store.hasLoadedNotes {
+            // Folded, or the first scan hasn't landed: not "No notes yet".
             EmptyView()
         } else if tree.totalCount == 0 {
             Text("No notes yet")
@@ -670,6 +671,10 @@ private struct SidebarSplitHook: NSViewRepresentable {
         private var observers: [NSObjectProtocol] = []
         private var isDraggingDivider = false
         private var lastWidth: CGFloat = 0
+        /// A saved width that arrived while the sidebar was collapsed (a
+        /// library opened from the welcome page starts that way); applied
+        /// once it has expanded.
+        private var pendingWidth: CGFloat?
         private var wasCollapsed = false
 
         deinit { detach() }
@@ -745,6 +750,13 @@ private struct SidebarSplitHook: NSViewRepresentable {
                 let collapsed = wasCollapsed
                 DispatchQueue.main.async { [weak self] in self?.onCollapsedChange(collapsed) }
             }
+            if !isCollapsed, let pending = pendingWidth {
+                pendingWidth = nil
+                // After the expand animation, so the two don't fight.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+                    self?.setWidth(pending, save: false)
+                }
+            }
             let width = sidebarWidth
             if isDraggingDivider, SidebarWidthPolicy.crossedSnapPoint(from: lastWidth, to: width) != nil {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
@@ -801,7 +813,10 @@ private struct SidebarSplitHook: NSViewRepresentable {
             // Widths saved while the icon rail existed (64) count as unset.
             let width = saved.map { CGFloat($0) }.flatMap { $0 >= SidebarWidthPolicy.minimum ? $0 : nil }
                 ?? SidebarWidthPolicy.standardDefault
-            DispatchQueue.main.async { [weak self] in self?.setWidth(width, save: false) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.isCollapsed { self.pendingWidth = width } else { self.setWidth(width, save: false) }
+            }
         }
     }
 }
