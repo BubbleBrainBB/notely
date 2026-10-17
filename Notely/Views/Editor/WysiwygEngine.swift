@@ -29,12 +29,10 @@ struct MarkdownStyle {
     /// system cascade already pairs the two scripts.
     let compositeFont: CompositeFont
 
+    /// Also the style of every empty line: a blank line is a full body line
+    /// wherever the caret is, so ↩ always moves down one line and nothing
+    /// shifts when the caret moves.
     let baseParagraph: [NSAttributedString.Key: Any]
-    /// The first empty line after a paragraph: a fixed gap, so one blank
-    /// line or three read the same (board ⑲ ⑤).
-    let blankLineParagraph: NSParagraphStyle
-    /// Further empty lines in the same run: (almost) no height.
-    let extraBlankLineParagraph: NSParagraphStyle
 
     /// The note's first `#` heading, shown as its title.
     let title: [NSAttributedString.Key: Any]
@@ -156,13 +154,6 @@ final class WysiwygEngine {
         let italicFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
         let boldItalicFont = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
 
-        let blank = NSMutableParagraphStyle()
-        blank.minimumLineHeight = 14
-        blank.maximumLineHeight = 14
-        let extraBlank = NSMutableParagraphStyle()
-        extraBlank.minimumLineHeight = 0.1
-        extraBlank.maximumLineHeight = 0.1
-
         func heading(size: CGFloat, weight: NSFont.Weight, before: CGFloat, after: CGFloat,
                      color: NSColor = ink) -> [NSAttributedString.Key: Any] {
             [
@@ -184,8 +175,6 @@ final class WysiwygEngine {
                 .foregroundColor: ink,
                 .paragraphStyle: paragraph(lineHeight: bodyLineHeight),
             ],
-            blankLineParagraph: blank,
-            extraBlankLineParagraph: extraBlank,
             // PingFang's Bold reads heavy in Chinese headings: Semibold, a
             // touch smaller, sitting closer to its paragraph (board ⑲ ④).
             title: heading(size: 30, weight: .semibold, before: 0, after: 10),
@@ -376,10 +365,6 @@ final class WysiwygEngine {
 
         // The first heading before any other content is the note's title.
         var seenContent = false
-        // Inside a run of empty lines (only the first one keeps its height),
-        // or right under a heading (whose own spacing already does the job).
-        var previousLineBlank = false
-        var previousLineHeading = false
         // Code blocks and callouts get extra space around them, applied after
         // the loop so the neighbors' own paragraph styles don't overwrite it.
         var spacedBlocks: [NSRange] = []
@@ -469,24 +454,15 @@ final class WysiwygEngine {
                 continue
             }
 
-            if trimmed.isEmpty {
-                // The caret's blank line keeps a full body line so it can be
-                // typed into; other runs collapse to one fixed gap.
-                let paragraph: NSParagraphStyle = isActive
-                    ? Self.paragraph(lineHeight: style.lineHeight)
-                    : (previousLineBlank || previousLineHeading ? style.extraBlankLineParagraph : style.blankLineParagraph)
-                storage.addAttribute(.paragraphStyle, value: paragraph, range: line.enclosing)
-                previousLineBlank = true
-                continue
-            }
-            previousLineBlank = false
-            previousLineHeading = false
+            // Empty lines keep the body style: one full line each, never
+            // collapsed. Collapsing them (or only the ones away from the
+            // caret) made ↩ look dead and made text jump as the caret moved.
+            if trimmed.isEmpty { continue }
 
             // Headings
             if let heading = parseHeading(line: line.text) {
                 let isTitle = heading.level == 1 && !seenContent
                 seenContent = true
-                previousLineHeading = true
                 let attrs = isTitle ? style.title : style.headings[heading.level - 1]
                 storage.addAttributes(attrs, range: lineRange)
                 let marker = NSRange(location: lineRange.location + heading.markerRange.location,

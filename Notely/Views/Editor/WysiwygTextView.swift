@@ -576,6 +576,14 @@ final class WysiwygTextView: NSTextView {
         // where the reader was and put them back afterwards.
         let clipView = enclosingScrollView?.contentView
         let savedScrollOrigin = clipView?.bounds.origin
+        // Where the caret's line sits in the viewport. A restyle can change
+        // heights above it (an image's source revealed, a table opening as
+        // source); keeping this line still keeps the text under the pointer.
+        let caretOffset: CGFloat? = {
+            guard let clipView, let y = caretLineY() else { return nil }
+            let offset = y - clipView.bounds.minY
+            return (0...clipView.bounds.height).contains(offset) ? offset : nil
+        }()
 
         // Map the caret into raw-markdown coordinates BEFORE collapsing/expanding
         // attachments, so it survives the coordinate change (image syntax ↔
@@ -615,11 +623,14 @@ final class WysiwygTextView: NSTextView {
         let displayCursor = displayLocation(forRawLocation: clampedRaw)
         setSelectedRange(NSRange(location: min(displayCursor, storage.length), length: 0))
 
-        if let clipView, let savedScrollOrigin {
+        if let clipView, var target = savedScrollOrigin {
             fitFrameToContent()
-            if clipView.bounds.origin != savedScrollOrigin {
+            if let caretOffset, let y = caretLineY() {
+                target.y = y - caretOffset
+            }
+            if clipView.bounds.origin != target {
                 clipView.setBoundsOrigin(clipView.constrainBoundsRect(
-                    NSRect(origin: savedScrollOrigin, size: clipView.bounds.size)).origin)
+                    NSRect(origin: target, size: clipView.bounds.size)).origin)
                 enclosingScrollView?.reflectScrolledClipView(clipView)
             }
         }
@@ -631,6 +642,22 @@ final class WysiwygTextView: NSTextView {
         if let font = typingAttributes[.font] as? NSFont, font.pointSize < 1 {
             typingAttributes = WysiwygEngine.makeStyle(fontSize: fontSize, lineHeight: lineHeight, fontName: fontName).baseParagraph
         }
+    }
+
+    /// Top of the caret's line fragment, in view coordinates.
+    private func caretLineY() -> CGFloat? {
+        guard let layoutManager, let storage = textStorage else { return nil }
+        let location = selectedRange().location
+        let rect: NSRect
+        if location >= storage.length, !layoutManager.extraLineFragmentRect.isEmpty {
+            rect = layoutManager.extraLineFragmentRect
+        } else if storage.length > 0 {
+            let glyph = layoutManager.glyphIndexForCharacter(at: min(location, storage.length - 1))
+            rect = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        } else {
+            return nil
+        }
+        return rect.minY + textContainerOrigin.y
     }
 
     @objc private func handleImageDidLoad() {
