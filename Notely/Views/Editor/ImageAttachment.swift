@@ -143,8 +143,8 @@ final class ImageLoader {
     private var cache: [String: LoadedMarkdownImage] = [:]
     private var loading: Set<String> = []
     private var failedUntil: [String: Date] = [:]
-    private var workspaceURL: URL?
-    private var baseURL: URL?
+    private(set) var workspaceURL: URL?
+    private(set) var baseURL: URL?
     private let session: URLSession = {
         let config = URLSessionConfiguration.default
         // timeoutIntervalForRequest is the max gap between bytes; resource is the

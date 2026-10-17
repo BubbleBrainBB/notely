@@ -461,6 +461,89 @@ final class WysiwygTextView: NSTextView {
         super.setNeedsDisplay(rect, avoidAdditionalLayout: flag)
     }
 
+    // MARK: - Pasting and dropping media
+
+    /// Pasted or dropped images and videos are copied into the library's
+    /// `attachments/` folder and linked on their own line (AttachmentImport);
+    /// anything else pastes and drops as before.
+    override func paste(_ sender: Any?) {
+        if insertMedia(from: .general, replacing: selectedRange()) { return }
+        super.paste(sender)
+    }
+
+    override var acceptableDragTypes: [NSPasteboard.PasteboardType] {
+        super.acceptableDragTypes + [.fileURL]
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let operation = super.draggingEntered(sender)
+        return mediaFiles(on: sender.draggingPasteboard).isEmpty ? operation : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let operation = super.draggingUpdated(sender)
+        return mediaFiles(on: sender.draggingPasteboard).isEmpty ? operation : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let point = convert(sender.draggingLocation, from: nil)
+        let location = characterIndexForInsertion(at: point)
+        if insertMedia(from: sender.draggingPasteboard, replacing: NSRange(location: location, length: 0)) {
+            return true
+        }
+        return super.performDragOperation(sender)
+    }
+
+    private func mediaFiles(on pasteboard: NSPasteboard) -> [URL] {
+        let urls = pasteboard.readObjects(forClasses: [NSURL.self],
+                                          options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.filter(AttachmentImport.isMedia)
+    }
+
+    /// Image data on the pasteboard (a screenshot, an image copied from a
+    /// browser) in its own format where it has one, else as PNG. Skipped when
+    /// there is text too: Word and Pages put a picture of copied text there.
+    private func pastedImage(on pasteboard: NSPasteboard) -> (data: Data, ext: String)? {
+        guard pasteboard.string(forType: .string) == nil else { return nil }
+        let native: [(NSPasteboard.PasteboardType, String)] = [
+            (.png, "png"), (NSPasteboard.PasteboardType("public.jpeg"), "jpg"),
+            (NSPasteboard.PasteboardType("com.compuserve.gif"), "gif"),
+        ]
+        for (type, ext) in native {
+            if let data = pasteboard.data(forType: type) { return (data, ext) }
+        }
+        guard let tiff = pasteboard.data(forType: .tiff),
+              let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return nil }
+        return (png, "png")
+    }
+
+    private func insertMedia(from pasteboard: NSPasteboard, replacing range: NSRange) -> Bool {
+        guard let library = ImageLoader.shared.workspaceURL else { return false }
+        let hasFiles = pasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
+        var imported: [URL] = []
+        if hasFiles {
+            imported = mediaFiles(on: pasteboard).compactMap { try? AttachmentImport.importFile($0, into: library) }
+        } else if let image = pastedImage(on: pasteboard),
+                  let url = try? AttachmentImport.saveImage(image.data, ext: image.ext, into: library) {
+            imported = [url]
+        }
+        guard !imported.isEmpty else { return false }
+
+        let noteFolder = ImageLoader.shared.baseURL ?? library
+        var text = imported
+            .map { AttachmentImport.markdown(forPath: AttachmentImport.relativePath(from: noteFolder, to: $0)) }
+            .joined(separator: "\n")
+        // Each embed on a line of its own.
+        let ns = string as NSString
+        let start = min(range.location, ns.length)
+        let end = min(NSMaxRange(range), ns.length)
+        if start > 0, ns.character(at: start - 1) != 0x0A { text = "\n" + text }
+        if end < ns.length, ns.character(at: end) != 0x0A { text += "\n" }
+        window?.makeFirstResponder(self)
+        insertText(text, replacementRange: NSRange(location: start, length: end - start))
+        return true
+    }
+
     // MARK: - First responder
 
     override var acceptsFirstResponder: Bool { true }

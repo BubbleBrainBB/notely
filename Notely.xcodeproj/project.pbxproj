@@ -36,6 +36,7 @@
 		7A1B2C3D4E5F60718293A4FA /* Callout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4FB /* Callout.swift */; };
 		BB22CC33DD44EE55FF660003 /* FrontmatterAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22CC33DD44EE55FF660004 /* FrontmatterAttachment.swift */; };
 		BB22CC33DD44EE55FF660007 /* VideoAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB22CC33DD44EE55FF660008 /* VideoAttachment.swift */; };
+		A77ACE000000000000000001 /* AttachmentImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A77ACE000000000000000002 /* AttachmentImport.swift */; };
 		7A1B2C3D4E5F60718293A4B6 /* MarkdownTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4B5 /* MarkdownTable.swift */; };
 		7A1B2C3D4E5F60718293A4C6 /* LatexMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1B2C3D4E5F60718293A4C5 /* LatexMath.swift */; };
 		C49FAA123F69F37D5D946DD6 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A4085CE734D06BACDB912F /* ColorTokens.swift */; };
@@ -72,6 +73,7 @@
 		7A1B2C3D4E5F60718293A4FB /* Callout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Callout.swift; sourceTree = "<group>"; };
 		BB22CC33DD44EE55FF660004 /* FrontmatterAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterAttachment.swift; sourceTree = "<group>"; };
 		BB22CC33DD44EE55FF660008 /* VideoAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAttachment.swift; sourceTree = "<group>"; };
+		A77ACE000000000000000002 /* AttachmentImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImport.swift; sourceTree = "<group>"; };
 		7A1B2C3D4E5F60718293A4B5 /* MarkdownTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTable.swift; sourceTree = "<group>"; };
 		7A1B2C3D4E5F60718293A4C5 /* LatexMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatexMath.swift; sourceTree = "<group>"; };
 		68CA4E783C0848DB5608663A /* TagExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagExtractor.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 				7A1B2C3D4E5F60718293A4FB /* Callout.swift */,
 				BB22CC33DD44EE55FF660004 /* FrontmatterAttachment.swift */,
 				BB22CC33DD44EE55FF660008 /* VideoAttachment.swift */,
+				A77ACE000000000000000002 /* AttachmentImport.swift */,
 				7A1B2C3D4E5F60718293A4B5 /* MarkdownTable.swift */,
 				7A1B2C3D4E5F60718293A4C5 /* LatexMath.swift */,
 				12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */,
@@ -330,6 +333,7 @@
 				7A1B2C3D4E5F60718293A4FA /* Callout.swift in Sources */,
 				BB22CC33DD44EE55FF660003 /* FrontmatterAttachment.swift in Sources */,
 				BB22CC33DD44EE55FF660007 /* VideoAttachment.swift in Sources */,
+				A77ACE000000000000000001 /* AttachmentImport.swift in Sources */,
 				7A1B2C3D4E5F60718293A4B6 /* MarkdownTable.swift in Sources */,
 				7A1B2C3D4E5F60718293A4C6 /* LatexMath.swift in Sources */,
 				7A1B2C3D4E5F60718293A4E6 /* NoteCardSummary.swift in Sources */,
