@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Left column (design boards ㉔–㉕, ㉚): search, then the library — its name
 /// as the tree's heading that folds it, with folder options (…) and New
@@ -8,7 +9,7 @@ import AppKit
 struct SidebarView: View {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
-    @State private var expandedFolders: Set<String> = []
+    @State private var tree = NoteTreeState()
     /// The whole library folded under its header (design board ㉚ C).
     @AppStorage("notely.libraryCollapsed") private var libraryCollapsed = false
 
@@ -60,6 +61,14 @@ struct SidebarView: View {
         .onChange(of: appModel.selectedNoteId) { _, id in
             if id != nil, libraryCollapsed { libraryCollapsed = false }
         }
+        .environment(tree)
+        .alert(tree.failedMove?.title ?? "", isPresented: Binding(
+            get: { tree.failedMove != nil }, set: { if !$0 { tree.failedMove = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(tree.failedMove?.message ?? "")
+        }
     }
 
     /// The natural width of the widest note row (indent + file name + chrome),
@@ -99,6 +108,9 @@ struct SidebarView: View {
                 .background(SidebarScrollerConfigurator())
             }
             .scrollContentBackground(.hidden)
+            // Dropped anywhere but on a row: out to the library's top level.
+            .onDrop(of: [.url], delegate: TreeDropDelegate(
+                folderId: "/", tree: tree, store: store, appModel: appModel, settles: true))
 
             SidebarSettingsRow()
                 .padding(.leading, Self.leadingInset)
@@ -110,29 +122,30 @@ struct SidebarView: View {
     // MARK: Notes tree
 
     @ViewBuilder private var notesSection: some View {
+        let root = NoteTreeBuilder.build(from: sortedNotes, files: store.files)
         LibraryHeader(isCollapsed: libraryCollapsed) {
             withAnimation(.easeInOut(duration: 0.15)) { libraryCollapsed.toggle() }
         }
+        .onChange(of: NoteTreeState.folderIds(in: root), initial: true) { _, ids in tree.folderIds = ids }
 
-        let tree = NoteTreeBuilder.build(from: sortedNotes, files: store.files)
         if libraryCollapsed || !store.hasLoadedNotes {
             // Folded, or the first scan hasn't landed: not "No notes yet".
             EmptyView()
-        } else if tree.totalCount == 0 {
+        } else if root.totalCount == 0 {
             Text("No notes yet")
                 .font(.notely(12.5))
                 .foregroundColor(.tertiaryText)
                 .padding(.leading, NoteTreeIndent.base)
                 .frame(height: 28)
         } else {
-            NoteFolderContents(folder: tree, depth: 0, expandedFolders: $expandedFolders)
+            NoteFolderContents(folder: root, depth: 0)
         }
     }
 
     /// Expands every folder on the way to the selected note so it is visible.
     private func revealSelectedNote(_ id: String?) {
         guard let id, let note = store.notes.first(where: { $0.id == id }) else { return }
-        expandedFolders.formUnion(NoteTreeBuilder.ancestorIds(ofRelativePath: note.relativePath))
+        tree.expandedFolders.formUnion(NoteTreeBuilder.ancestorIds(ofRelativePath: note.relativePath))
     }
 }
 
@@ -162,6 +175,7 @@ private struct LibraryHeader: View {
     let toggle: () -> Void
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
+    @Environment(NoteTreeState.self) var tree
     @Environment(\.openWindow) private var openWindow
     @State private var isHovering = false
     @State private var isHoveringMore = false
@@ -250,7 +264,9 @@ private struct LibraryHeader: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isHovering ? Color.cardHover : Color.clear)
         )
+        .dropHighlight(tree.dropTarget == "/")
         .onHover { isHovering = $0 }
+        .treeDropTarget("/")
     }
 }
 
@@ -443,22 +459,22 @@ struct FolderGlyph: Shape {
 private struct NoteFolderContents: View {
     let folder: NoteFolder
     let depth: Int
-    @Binding var expandedFolders: Set<String>
     var baseIndent: CGFloat = NoteTreeIndent.base
+    @Environment(NoteTreeState.self) var tree
 
     var body: some View {
         ForEach(folder.folders) { child in
-            FolderRow(folder: child, depth: depth, isExpanded: expandedFolders.contains(child.id), baseIndent: baseIndent) {
+            FolderRow(folder: child, depth: depth, isExpanded: tree.expandedFolders.contains(child.id), baseIndent: baseIndent) {
                 withAnimation(.easeInOut(duration: 0.15)) {
-                    if expandedFolders.contains(child.id) {
-                        expandedFolders.remove(child.id)
+                    if tree.expandedFolders.contains(child.id) {
+                        tree.expandedFolders.remove(child.id)
                     } else {
-                        expandedFolders.insert(child.id)
+                        tree.expandedFolders.insert(child.id)
                     }
                 }
             }
-            if expandedFolders.contains(child.id) {
-                NoteFolderContents(folder: child, depth: depth + 1, expandedFolders: $expandedFolders, baseIndent: baseIndent)
+            if tree.expandedFolders.contains(child.id) {
+                NoteFolderContents(folder: child, depth: depth + 1, baseIndent: baseIndent)
             }
         }
         ForEach(folder.notes) { note in
@@ -481,7 +497,13 @@ private struct FolderRow: View {
     let isExpanded: Bool
     var baseIndent: CGFloat = NoteTreeIndent.base
     let toggle: () -> Void
+    @Environment(FileNoteStore.self) var store
+    @Environment(NoteTreeState.self) var tree
     @State private var isHovering = false
+
+    private var url: URL? {
+        store.workspaceURL.map { LibraryMove.folderURL(forId: folder.id, in: $0) }
+    }
 
     var body: some View {
         Button(action: toggle) {
@@ -505,10 +527,24 @@ private struct FolderRow: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isHovering ? Color.cardHover : Color.clear)
             )
+            .dropHighlight(tree.dropTarget == folder.id)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .draggable(url ?? URL(fileURLWithPath: "/")) {
+            SidebarDragPreview(title: folder.name) {
+                FolderGlyph(open: false)
+                    .stroke(Color.secondaryText, style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
+            }
+        }
+        .treeDropTarget(folder.id, springLoads: !isExpanded)
+        .contextMenu {
+            if let url {
+                MoveToMenu(item: url, parent: (folder.id as NSString).deletingLastPathComponent, folderId: folder.id)
+                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+        }
     }
 }
 
@@ -563,12 +599,18 @@ private struct NoteRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .draggable(note.url) {
+            SidebarDragPreview(title: displayTitle) { ShiyeIcon(.note, size: 15) }
+        }
+        // Dropped on a note: into the note's folder, as in Finder's list view.
+        .treeDropTarget(note.relativePath)
         .contextMenu {
             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
             Button("Rename…") {
                 renameText = note.filename
                 isRenaming = true
             }
+            MoveToMenu(item: note.url, parent: note.relativePath)
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
             Divider()
             Button("Delete", role: .destructive) {
@@ -641,6 +683,10 @@ private struct FileRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .draggable(file.url) {
+            SidebarDragPreview(title: file.name) { ShiyeIcon(glyph, size: 15) }
+        }
+        .treeDropTarget(file.relativePath)
         .contextMenu {
             Button("Copy Markdown Link") {
                 guard let library = store.workspaceURL else { return }
@@ -649,6 +695,7 @@ private struct FileRow: View {
                 NSPasteboard.general.setString(AttachmentImport.markdown(forPath: path), forType: .string)
             }
             Button("Open in Default App") { NSWorkspace.shared.open(file.url) }
+            MoveToMenu(item: file.url, parent: file.relativePath)
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
             Divider()
             Button("Move to Trash", role: .destructive) {
@@ -658,6 +705,160 @@ private struct FileRow: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Moving
+
+/// Move To: the library's top level and every folder of the tree, but not
+/// the item's own folder — nor, for a folder, itself or a folder inside it.
+private struct MoveToMenu: View {
+    let item: URL
+    /// The folder the item is in now.
+    let parent: String
+    /// For a folder, its own id.
+    var folderId: String? = nil
+    @Environment(NoteTreeState.self) var tree
+    @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
+
+    private var destinations: [String] {
+        (["/"] + tree.folderIds).filter { id in
+            id != parent && !(folderId.map { LibraryMove.isSameOrInside(id, $0) } ?? false)
+        }
+    }
+
+    var body: some View {
+        Menu("Move To") {
+            ForEach(destinations, id: \.self) { id in
+                Button(label(for: id)) {
+                    tree.move([item], toFolder: id, store: store, appModel: appModel)
+                }
+            }
+        }
+        .disabled(destinations.isEmpty)
+    }
+
+    /// The library's name, or the folder's path below it ("Travel › Japan").
+    private func label(for id: String) -> String {
+        id == "/" ? tree.folderName("/", store: store) : id.split(separator: "/").joined(separator: " › ")
+    }
+}
+
+/// Lands dragged sidebar rows in the folder `folderId`. Proposes a move, so
+/// the pointer shows no copy badge.
+private struct TreeDropDelegate: DropDelegate {
+    let folderId: String
+    let tree: NoteTreeState
+    let store: FileNoteStore
+    let appModel: AppModel
+    /// The list behind the rows: claims the highlight only after a beat.
+    var settles = false
+    /// A closed folder: opens if the drag rests on it.
+    var springLoads = false
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.url])
+    }
+
+    func dropEntered(info: DropInfo) {
+        tree.setTargeted(true, folder: folderId, settles: settles)
+        if springLoads { tree.springLoad(folderId) }
+    }
+
+    func dropExited(info: DropInfo) {
+        tree.setTargeted(false, folder: folderId)
+        tree.cancelSpringLoad(folderId)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: [.url])
+        guard !providers.isEmpty else { return false }
+        Task { @MainActor in
+            var urls: [URL] = []
+            for provider in providers {
+                if let url = await Self.loadURL(provider) { urls.append(url) }
+            }
+            tree.move(urls, toFolder: folderId, store: store, appModel: appModel)
+        }
+        return true
+    }
+
+    private static func loadURL(_ provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url?.isFileURL == true ? url : nil)
+            }
+        }
+    }
+}
+
+/// What follows the pointer while a sidebar row is dragged: the row's icon
+/// and name on a small raised label, legible over whatever it passes.
+private struct SidebarDragPreview<Icon: View>: View {
+    let title: String
+    @ViewBuilder let icon: Icon
+
+    var body: some View {
+        HStack(spacing: NoteTreeIndent.iconGap) {
+            icon
+                .foregroundColor(.secondaryText)
+                .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+            Text(title)
+                .font(.notely(13, weight: .medium))
+                .foregroundColor(.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .frame(maxWidth: 220, alignment: .leading)
+        .fixedSize()
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.borderColor, lineWidth: 1)
+        )
+    }
+}
+
+private struct TreeDropTarget: ViewModifier {
+    let folderId: String
+    let springLoads: Bool
+    @Environment(NoteTreeState.self) var tree
+    @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
+
+    func body(content: Content) -> some View {
+        content.onDrop(of: [.url], delegate: TreeDropDelegate(
+            folderId: folderId, tree: tree, store: store, appModel: appModel, springLoads: springLoads))
+    }
+}
+
+private extension View {
+    func treeDropTarget(_ folderId: String, springLoads: Bool = false) -> some View {
+        modifier(TreeDropTarget(folderId: folderId, springLoads: springLoads))
+    }
+
+    /// The tint on a folder row (or the library heading) a drop would land in.
+    func dropHighlight(_ isTargeted: Bool) -> some View {
+        overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isTargeted ? Color.accentHover : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(isTargeted ? Color.accent.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
+                .allowsHitTesting(false)
+                .animation(.easeOut(duration: 0.12), value: isTargeted)
+        )
     }
 }
 

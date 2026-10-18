@@ -148,15 +148,17 @@ final class FileNoteStore {
     /// (the note is in the library from now on).
     @discardableResult
     func saveContent(_ content: String, to noteId: String) -> Bool {
-        guard let note = notes.first(where: { $0.id == noteId }) else {
+        guard let note = notes.first(where: { $0.id == noteId }) ?? movedNote(noteId) else {
             return saveDraft(content, id: noteId)
         }
+        // A save from before a move: its links still read from the old folder.
+        let content = note.id == noteId ? content : relinked(content, savedFor: noteId)
         // Record before writing so the watcher event this triggers is recognized
         // as our own and does not cause a redundant rescan.
         recentlySavedPaths[note.url.path] = Date()
         try? content.write(to: note.url, atomically: true, encoding: .utf8)
         // Update in-memory without full reload (avoids cursor jump)
-        if let idx = notes.firstIndex(where: { $0.id == noteId }) {
+        if let idx = notes.firstIndex(where: { $0.id == note.id }) {
             notes[idx].content = content
             notes[idx].title = TitleExtractor.extract(from: content)
             notes[idx].tags = TagExtractor.frontmatterTags(from: content)
@@ -290,6 +292,97 @@ final class FileNoteStore {
             print("Rename failed: \(error)")
             return nil
         }
+    }
+
+    /// Item moves of this session, oldest first, so a debounced save bound to
+    /// a note's old path still lands in its file after a move.
+    @ObservationIgnored private var recentMoves: [(from: String, to: String)] = []
+
+    /// Moves a note, file or folder into the folder with sidebar id `folderId`
+    /// ("/" for the library's top level). Never overwrites: a name already
+    /// taken there refuses the move. Pins, and the notes and files in memory,
+    /// follow at once (their ids are their paths), so a selection the caller
+    /// remaps with `LibraryMove.remap` finds its note straight away.
+    func moveItem(at url: URL, toFolder folderId: String) -> Result<URL, LibraryMove.Refusal> {
+        guard let workspaceURL else { return .failure(.outsideLibrary) }
+        let folder = LibraryMove.folderURL(forId: folderId, in: workspaceURL)
+        let newURL: URL
+        switch LibraryMove.destination(moving: url, into: folder, library: workspaceURL,
+                                       exists: { FileManager.default.fileExists(atPath: $0.path) }) {
+        case .success(let target): newURL = target
+        case .failure(let refusal): return .failure(refusal)
+        }
+
+        do {
+            try FileManager.default.moveItem(at: url, to: newURL)
+        } catch {
+            return .failure(.failed(error.localizedDescription))
+        }
+        let old = url.path, new = newURL.path
+
+        // Migrate pin state, which is keyed by file path.
+        let movedPins = pinnedFiles.compactMap { path in LibraryMove.remap(path, from: old, to: new).map { (path, $0) } }
+        if !movedPins.isEmpty {
+            for (from, to) in movedPins {
+                pinnedFiles.remove(from)
+                pinnedFiles.insert(to)
+            }
+            savePinnedFiles()
+        }
+
+        notes = notes.map { note in
+            guard let path = LibraryMove.remap(note.id, from: old, to: new) else { return note }
+            let url = URL(fileURLWithPath: path)
+            return FileNote(id: path, url: url, title: note.title, content: note.content, tags: note.tags,
+                            createdAt: note.createdAt, updatedAt: note.updatedAt, pinned: note.pinned,
+                            relativePath: relativePath(of: url))
+        }
+        files = files.map { file in
+            guard let path = LibraryMove.remap(file.id, from: old, to: new) else { return file }
+            let url = URL(fileURLWithPath: path)
+            return LibraryFile(id: path, url: url, kind: file.kind, updatedAt: file.updatedAt,
+                               relativePath: relativePath(of: url))
+        }
+        recentMoves.append((old, new))
+        relinkNotes(movedFrom: old, to: new, in: workspaceURL)
+        scheduleReload()
+        return .success(newURL)
+    }
+
+    /// Rewrites the links of the notes a move carried along — the note itself,
+    /// or those in a moved folder — that would no longer find their images,
+    /// videos and PDFs from the new folder. Saved like an edit, so the watcher
+    /// takes the write as our own.
+    private func relinkNotes(movedFrom old: String, to new: String, in library: URL) {
+        let fm = FileManager.default
+        for note in notes {
+            guard let oldPath = LibraryMove.remap(note.id, from: new, to: old),
+                  let content = try? String(contentsOf: note.url, encoding: .utf8) else { continue }
+            let relinked = LinkRewrite.rewrite(content, noteAt: oldPath, movedFrom: old, to: new,
+                                               library: library.path, exists: { fm.fileExists(atPath: $0) })
+            if relinked != content { saveContent(relinked, to: note.id) }
+        }
+    }
+
+    /// `content` saved for the note once at `id`, its links following each of
+    /// this session's moves since — the editor's last save before a move.
+    private func relinked(_ content: String, savedFor id: String) -> String {
+        guard let library = workspaceURL?.path else { return content }
+        var path = id, content = content
+        for move in recentMoves {
+            guard let moved = LibraryMove.remap(path, from: move.from, to: move.to) else { continue }
+            content = LinkRewrite.rewrite(content, noteAt: path, movedFrom: move.from, to: move.to, library: library,
+                                          exists: { FileManager.default.fileExists(atPath: $0) })
+            path = moved
+        }
+        return content
+    }
+
+    /// Where the note once at `id` is now, following this session's moves.
+    private func movedNote(_ id: String) -> FileNote? {
+        let path = recentMoves.reduce(id) { path, move in LibraryMove.remap(path, from: move.from, to: move.to) ?? path }
+        guard path != id else { return nil }
+        return notes.first { $0.id == path }
     }
 
     // MARK: - File system watching
