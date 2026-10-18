@@ -96,6 +96,15 @@ final class ListMarker: NSObject {
         self.font = font
     }
 
+    // Equal by what they draw, so a restyle that rebuilds an unchanged list
+    // leaves its lines alone (WysiwygEngine.applyChanges).
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? ListMarker else { return false }
+        return kind == other.kind && indent == other.indent && font == other.font
+    }
+
+    override var hash: Int { indent.hashValue ^ font.hashValue }
+
     static let slotWidth: CGFloat = 24
 
     /// The checkbox's frame relative to the container's left edge and the

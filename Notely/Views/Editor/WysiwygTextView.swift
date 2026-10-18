@@ -11,8 +11,10 @@ enum Diag {
         return "\(home)/notely_debug.log"
     }()
 
-    static func log(_ message: String) {
+    /// The message is built only when logging is on (it often copies the text).
+    static func log(_ message: @autoclosure () -> String) {
         guard enabled else { return }
+        let message = message()
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
         let line = "[\(timestamp)] \(message)\n"
         // Also print to stderr for immediate feedback
@@ -63,6 +65,10 @@ final class EditorScrollView: NSScrollView {
 /// closure. This breaks the feedback loop where every keystroke would
 /// trigger a SwiftUI re-render that resets the NSTextView.
 struct WysiwygEditor: NSViewRepresentable {
+    /// Bumped by the parent when `initialText` must replace what is in the
+    /// editor (another note opened, a change from disk). Between bumps the
+    /// parent's text may lag behind typing and is never pushed.
+    var textRevision = 0
     let initialText: String
     let fontSize: CGFloat
     let lineHeight: CGFloat
@@ -129,6 +135,7 @@ struct WysiwygEditor: NSViewRepresentable {
         scrollView.documentView = textView
         context.coordinator.textView = textView
         context.coordinator.lastKnownText = initialText
+        context.coordinator.textRevision = textRevision
         Diag.log("makeNSView: textView frame=\(textView.frame) isEditable=\(textView.isEditable)")
         return scrollView
     }
@@ -152,7 +159,12 @@ struct WysiwygEditor: NSViewRepresentable {
         // the coordinator's lastKnownText. If they match, the change came from
         // user typing (which already updated the text view). If they differ,
         // it's an external change (note switch) that needs to be pushed in.
-        if initialText != context.coordinator.lastKnownText {
+        // The parent's text may lag behind typing (it catches up after a
+        // pause), so it is pushed only when the parent says it replaces the
+        // editor's: another note, or a change from disk.
+        let replaces = textRevision != context.coordinator.textRevision
+        context.coordinator.textRevision = textRevision
+        if replaces, initialText != context.coordinator.lastKnownText {
             context.coordinator.lastKnownText = initialText
             let selectedRange = textView.selectedRange()
             textView.string = initialText
@@ -196,6 +208,8 @@ struct WysiwygEditor: NSViewRepresentable {
         var onTextChange: (String) -> Void
         weak var textView: NSTextView?
         var lastKnownText: String = ""
+        /// The parent's `textRevision` last seen.
+        var textRevision = 0
 
         init(onTextChange: @escaping (String) -> Void) {
             self.onTextChange = onTextChange
@@ -628,8 +642,99 @@ final class WysiwygTextView: NSTextView {
         super.didChangeText()
         if isRestyling { return }
         Diag.log("didChangeText string='\(string.prefix(30))'")
-        restyle()
+        let edit = pendingEdit
+        pendingEdit = nil
+        let caret = selectedRange().location
+        let lines: [Int]? = switch edit {
+        case .withinLine?, .joinedLines?: [caret]
+        case .newLine?: [caret, max(0, caret - 1)]
+        default: nil
+        }
+        if !(lines.map { restyleLinesAlone(at: $0) } ?? false) {
+            restyle()
+        }
         onTextChange?(markdownString())
+    }
+
+    // MARK: - Restyling one line
+
+    /// What the edit under way does to lines, set by `shouldChangeText`:
+    /// typing within a line, ↩ (a line break alone), or ⌫ joining two lines.
+    /// Anything else — a paste over several lines, an attachment touched,
+    /// several edits before `didChangeText` — restyles the whole note.
+    private enum LineEdit { case withinLine, newLine, joinedLines, other }
+    private var pendingEdit: LineEdit?
+
+    override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
+        let allowed = super.shouldChangeText(in: range, replacementString: replacementString)
+        if allowed, !isRestyling {
+            let ns = string as NSString
+            let removed = NSMaxRange(range) <= ns.length ? ns.substring(with: range) : "\u{FFFC}"
+            let inserted = replacementString ?? ""
+            let kind: LineEdit
+            if removed.contains("\u{FFFC}") {
+                kind = .other
+            } else if !removed.contains(where: \.isNewline) && !inserted.contains(where: \.isNewline) {
+                kind = .withinLine
+            } else if !removed.contains(where: \.isNewline) && inserted == "\n" {
+                kind = .newLine
+            } else if removed == "\n" && inserted.isEmpty {
+                kind = .joinedLines
+            } else {
+                kind = .other
+            }
+            pendingEdit = pendingEdit == nil ? kind : (pendingEdit == .withinLine && kind == .withinLine ? .withinLine : .other)
+        }
+        return allowed
+    }
+
+    /// After the caret moved from display location `before`: restyle the
+    /// line it left and the one it is on — just those lines when they can be
+    /// styled alone, else the whole note (a table, image or block reveals its
+    /// source as the caret enters and collapses as it leaves).
+    private func restyleCaretLines(from before: Int) {
+        if !restyleLinesAlone(at: [before, selectedRange().location]) { restyle() }
+    }
+
+    /// The typing fast path: restyles only the lines holding the display
+    /// `locations`, when every one of them can be styled alone
+    /// (`WysiwygEngine.canStyleAlone`) — the same result as a whole-note
+    /// pass, at the cost of a line. Returns false, changing nothing, when
+    /// any line needs the whole note.
+    @discardableResult
+    func restyleLinesAlone(at locations: [Int]) -> Bool {
+        guard !isRestyling, let storage = textStorage, let engine, storage.length > 0 else { return false }
+        let ns = storage.string as NSString
+        var lines: [NSRange] = []
+        for location in locations {
+            let line = ns.lineRange(for: NSRange(location: min(max(0, location), ns.length), length: 0))
+            if !lines.contains(line) { lines.append(line) }
+        }
+        guard lines.allSatisfy({ WysiwygEngine.canStyleAlone(lineRange: $0, in: storage) })
+        else { return false }
+
+        isRestyling = true
+        defer { isRestyling = false }
+        let caret = selectedRange().location
+        let width = max(120, (textContainer?.size.width ?? bounds.width))
+        let styled = lines.map { line -> NSAttributedString in
+            let text = ns.substring(with: line)
+            let contentEnd = line.location + (text.trimmingCharacters(in: .newlines) as NSString).length
+            let cursor = caret >= line.location && caret <= contentEnd ? caret - line.location : -1
+            return engine.styledLine(text, cursorInLine: cursor, maxWidth: width)
+        }
+        storage.beginEditing()
+        for (line, attributed) in zip(lines, styled) {
+            attributed.enumerateAttributes(in: NSRange(location: 0, length: attributed.length)) { attributes, range, _ in
+                storage.setAttributes(attributes, range: NSRange(location: line.location + range.location, length: range.length))
+            }
+        }
+        storage.endEditing()
+        fitFrameToContent()
+        if let font = typingAttributes[.font] as? NSFont, font.pointSize < 1 {
+            typingAttributes = WysiwygEngine.makeStyle(fontSize: fontSize, lineHeight: lineHeight, fontName: fontName).baseParagraph
+        }
+        return true
     }
 
     /// Request a restyle that is coalesced to at most once per runloop turn.
@@ -664,7 +769,7 @@ final class WysiwygTextView: NSTextView {
         // source); keeping this line still keeps the text under the pointer.
         let caretOffset: CGFloat? = {
             guard let clipView, let y = caretLineY() else { return nil }
-            let offset = y - clipView.bounds.minY
+            let offset = clipView.convert(NSPoint(x: 0, y: y), from: self).y - clipView.bounds.minY
             return (0...clipView.bounds.height).contains(offset) ? offset : nil
         }()
 
@@ -673,9 +778,6 @@ final class WysiwygTextView: NSTextView {
         // attachment, table source ↔ grid).
         let rawCursor = rawLocation(forDisplayLocation: selectedRange().location)
         let rawMarkdown = markdownString()
-        if rawMarkdown != storage.string {
-            storage.setAttributedString(NSAttributedString(string: rawMarkdown))
-        }
         let rawNS = rawMarkdown as NSString
         let clampedRaw = min(rawCursor, rawNS.length)
 
@@ -697,10 +799,14 @@ final class WysiwygTextView: NSTextView {
             break
         }
 
+        // Style a copy away from the layout manager, then write back only
+        // what changed, so unchanged parts keep their layout.
         let contentWidth = max(120, (textContainer?.size.width ?? bounds.width))
-        engine?.applyStyle(to: storage, cursorLocation: clampedRaw,
+        let styled = NSTextStorage(string: rawMarkdown)
+        engine?.applyStyle(to: styled, cursorLocation: clampedRaw,
                            activeTableIndex: activeTableIndex, activeMathIndex: activeMathIndex,
                            maxWidth: contentWidth)
+        WysiwygEngine.applyChanges(from: styled, to: storage)
 
         // Map the caret back into the (re-collapsed) display coordinates.
         let displayCursor = displayLocation(forRawLocation: clampedRaw)
@@ -709,7 +815,7 @@ final class WysiwygTextView: NSTextView {
         if let clipView, var target = savedScrollOrigin {
             fitFrameToContent()
             if let caretOffset, let y = caretLineY() {
-                target.y = y - caretOffset
+                target.y = clipView.convert(NSPoint(x: 0, y: y), from: self).y - caretOffset
             }
             if clipView.bounds.origin != target {
                 clipView.setBoundsOrigin(clipView.constrainBoundsRect(
@@ -872,7 +978,7 @@ final class WysiwygTextView: NSTextView {
             setSelectedRange(after)
         }
         if after != before {
-            restyle()
+            restyleCaretLines(from: before.location)
         }
     }
 
@@ -883,6 +989,7 @@ final class WysiwygTextView: NSTextView {
         if toggleTaskIfCheckboxClicked(event) { return }
         if playVideoIfClicked(event) { return }
         if revealImageSourceIfClicked(event) { return }
+        let before = selectedRange()
         super.mouseDown(with: event)
         // A simple click (no drag-selection): re-render so the table the caret
         // landed in opens as editable source, and the one it left re-renders as a
@@ -890,7 +997,7 @@ final class WysiwygTextView: NSTextView {
         // clobbered. The caret survives the storage rebuild via the raw↔display
         // remap in restyle().
         if selectedRange().length == 0 {
-            restyle()
+            restyleCaretLines(from: before.location)
         }
     }
 

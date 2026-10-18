@@ -74,6 +74,13 @@ final class WysiwygEngine {
     /// tracking the same attachment object across restyles. Rebuilt once the
     /// poster arrives.
     private var videoCache: [String: (attachment: VideoAttachment, hasPoster: Bool)] = [:]
+    /// Images and the frontmatter panel, reused while unchanged so a restyle
+    /// keeps the same attachment objects: nothing to re-measure or redraw,
+    /// and `applyChanges` sees those runs as unchanged. Image keys count
+    /// repeats of the same image within a pass.
+    private var imageCache: [String: ImageTextAttachment] = [:]
+    private var imageOccurrences: [String: Int] = [:]
+    private var frontmatterCache: (key: String, attachment: FrontmatterAttachment)?
 
     /// Obsidian embed: `![[file.ext]]`, `![[file|300]]`.
     private static let embedPattern = try! NSRegularExpression(pattern: #"!\[\[([^\]\n]+)\]\]"#)
@@ -323,19 +330,11 @@ final class WysiwygEngine {
         let nsString = storage.string as NSString
 
         storage.beginEditing()
+        imageOccurrences.removeAll(keepingCapacity: true)
 
-        // Clear temporary attributes
-        for key: NSAttributedString.Key in [
-            .foregroundColor, .backgroundColor, .font, .underlineStyle, .underlineColor,
-            .strikethroughStyle, .strikethroughColor, .paragraphStyle, .attachment, .kern,
-            .codeBlockBackground, .codeBlockLanguage, .calloutType, .calloutIcon, .listMarker,
-            .blockquoteDepth, .inlinePill, .textHighlight, .horizontalRule,
-        ] {
-            storage.removeAttribute(key, range: fullRange)
-        }
-
-        // Apply base paragraph style to everything
-        storage.addAttributes(style.baseParagraph, range: fullRange)
+        // Start from the body style everywhere: one pass that also drops
+        // every mark from the last styling.
+        storage.setAttributes(style.baseParagraph, range: fullRange)
 
         // Lines, with and without their terminators. Block decorations go on
         // the enclosing range so consecutive lines form one continuous run.
@@ -537,9 +536,9 @@ final class WysiwygEngine {
                    let url = ImageLoader.shared.resolveEmbed(urlString) {
                     replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth), revealed))
                 } else if let content = ImageLoader.shared.loadSync(urlString: urlString) {
-                    replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
-                                                                          caption: alt, maxWidth: maxWidth,
-                                                                          fillsLine: revealed), revealed))
+                    replacements.append((match.range, imageAttachment(content: content, source: markdown, url: urlString,
+                                                                      caption: alt, maxWidth: maxWidth,
+                                                                      revealed: revealed), revealed))
                 } else if isRemoteImageURL(urlString) {
                     ImageLoader.shared.loadAsync(urlString: urlString) { image in
                         if image != nil {
@@ -558,8 +557,9 @@ final class WysiwygEngine {
             if VideoFile.isVideo(url.path) {
                 replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth), revealed))
             } else if let content = ImageLoader.shared.loadSync(urlString: url.path) {
-                replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
-                                                                      maxWidth: maxWidth, fillsLine: revealed), revealed))
+                replacements.append((match.range, imageAttachment(content: content, source: markdown, url: url.path,
+                                                                  caption: "", maxWidth: maxWidth, revealed: revealed),
+                                     revealed))
             }
         }
         replacements.sort { $0.range.location < $1.range.location }
@@ -679,7 +679,14 @@ final class WysiwygEngine {
         // range computed above valid.
         if let frontmatter, !frontmatterActive, NSMaxRange(frontmatter.range) <= storage.length {
             let source = (storage.string as NSString).substring(with: frontmatter.range)
-            let attachment = FrontmatterAttachment(frontmatter: frontmatter, markdownSource: source, maxWidth: maxWidth)
+            let key = "\(Int(maxWidth))|\(source)"
+            let attachment: FrontmatterAttachment
+            if let cached = frontmatterCache, cached.key == key {
+                attachment = cached.attachment
+            } else {
+                attachment = FrontmatterAttachment(frontmatter: frontmatter, markdownSource: source, maxWidth: maxWidth)
+                frontmatterCache = (key, attachment)
+            }
             let replacement = NSMutableAttributedString(attachment: attachment)
             replacement.addAttribute(.paragraphStyle, value: Self.paragraph(lineSpacing: 0, after: 16),
                                      range: NSRange(location: 0, length: replacement.length))
@@ -687,6 +694,121 @@ final class WysiwygEngine {
         }
 
         storage.endEditing()
+    }
+
+    // MARK: - Writing a restyle back
+
+    /// Makes `storage` equal to `styled` — text and attributes — touching
+    /// only what differs: the changed stretch of text is replaced, and in the
+    /// rest only runs whose attributes changed are set. Layout stays valid
+    /// wherever nothing changed, so a whole-note restyle costs a whole-note
+    /// relayout only when the whole note really looks different.
+    static func applyChanges(from styled: NSAttributedString, to storage: NSTextStorage) {
+        let old = storage.string as NSString
+        let new = styled.string as NSString
+        let oldLength = old.length, newLength = new.length
+        var oldChars = [unichar](repeating: 0, count: oldLength)
+        var newChars = [unichar](repeating: 0, count: newLength)
+        old.getCharacters(&oldChars, range: NSRange(location: 0, length: oldLength))
+        new.getCharacters(&newChars, range: NSRange(location: 0, length: newLength))
+
+        let shorter = min(oldLength, newLength)
+        var prefix = 0
+        while prefix < shorter, oldChars[prefix] == newChars[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < shorter - prefix, oldChars[oldLength - 1 - suffix] == newChars[newLength - 1 - suffix] { suffix += 1 }
+
+        storage.beginEditing()
+        let oldMiddle = NSRange(location: prefix, length: oldLength - prefix - suffix)
+        let newMiddle = NSRange(location: prefix, length: newLength - prefix - suffix)
+        if oldMiddle.length > 0 || newMiddle.length > 0 {
+            storage.replaceCharacters(in: oldMiddle, with: styled.attributedSubstring(from: newMiddle))
+        }
+        // The text now matches; bring the attributes of the rest in line.
+        for range in [NSRange(location: 0, length: prefix), NSRange(location: newLength - suffix, length: suffix)]
+        where range.length > 0 {
+            styled.enumerateAttributes(in: range) { wanted, wantedRange, _ in
+                let wantedDictionary = wanted as NSDictionary
+                storage.enumerateAttributes(in: wantedRange) { current, currentRange, _ in
+                    if !wantedDictionary.isEqual(to: current) {
+                        storage.setAttributes(wanted, range: currentRange)
+                    }
+                }
+            }
+        }
+        storage.endEditing()
+    }
+
+    // MARK: - One line on its own
+
+    /// Whether the line at `lineRange` (with its break) in `storage` — styled
+    /// text, as the editor shows it — can be restyled by itself: its look
+    /// depends on nothing around it, so typing in it needn't restyle the
+    /// whole note. Lines that are, could turn into, or sit next to a block
+    /// (fences, callouts, quotes, tables, math, rules, the frontmatter), lines
+    /// with images and a possible title take the whole-note pass instead.
+    static func canStyleAlone(lineRange: NSRange, in storage: NSAttributedString) -> Bool {
+        let ns = storage.string as NSString
+        guard NSMaxRange(lineRange) <= ns.length else { return false }
+        let line = ns.substring(with: lineRange).trimmingCharacters(in: .newlines)
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        for prefix in ["```", "~~~", ":::", ">", "|", "$$", "#", "<", "===", "[^"] where trimmed.hasPrefix(prefix) {
+            // Headings are fine, except a possible title (`# `).
+            if prefix == "#", trimmed.hasPrefix("##") { continue }
+            return false
+        }
+        if isHorizontalRuleText(trimmed) { return false }
+        for marker in ["![", "$", "|", "\u{FFFC}"] where line.contains(marker) { return false }
+        // Inside the frontmatter (shown as source while the caret is in it).
+        if ns.hasPrefix("---"), let frontmatter = Frontmatter.parse(ns),
+           lineRange.location < NSMaxRange(frontmatter.range) { return false }
+
+        // Not inside a block, nor right before or after one (block spacing
+        // reaches into the neighbors' paragraph styles).
+        var around = lineRange
+        if around.location > 0 {
+            around = NSUnionRange(around, ns.lineRange(for: NSRange(location: around.location - 1, length: 0)))
+        }
+        if NSMaxRange(around) < ns.length {
+            around = NSUnionRange(around, ns.lineRange(for: NSRange(location: NSMaxRange(around), length: 0)))
+        }
+        var inBlock = false
+        for key: NSAttributedString.Key in [.codeBlockBackground, .calloutType, .blockquoteDepth, .horizontalRule] {
+            storage.enumerateAttribute(key, in: around) { value, _, stop in
+                if value != nil { inBlock = true; stop.pointee = true }
+            }
+            if inBlock { return false }
+        }
+        return true
+    }
+
+    private static func isHorizontalRuleText(_ trimmed: String) -> Bool {
+        let compact = trimmed.replacingOccurrences(of: " ", with: "")
+        guard compact.count >= 3, let first = compact.first, "-*_".contains(first) else { return false }
+        return compact.allSatisfy { $0 == first }
+    }
+
+    /// `line` (with its break) styled exactly as the whole-note pass styles
+    /// it in place — for a line that `canStyleAlone`. `cursorInLine` is the
+    /// caret's offset in the line, or -1 when it is elsewhere.
+    func styledLine(_ line: String, cursorInLine: Int, maxWidth: CGFloat) -> NSAttributedString {
+        let storage = NSTextStorage(string: line)
+        applyStyle(to: storage, cursorLocation: cursorInLine, maxWidth: maxWidth)
+        return storage
+    }
+
+    private func imageAttachment(content: LoadedMarkdownImage, source: String, url: String, caption: String,
+                                 maxWidth: CGFloat, revealed: Bool) -> ImageTextAttachment {
+        let base = "\(Int(maxWidth))|\(revealed)|\(url)|\(caption)|\(source)"
+        let occurrence = imageOccurrences[base, default: 0]
+        imageOccurrences[base] = occurrence + 1
+        let key = "\(base)#\(occurrence)"
+        if let cached = imageCache[key] { return cached }
+        if imageCache.count > 600 { imageCache.removeAll() }
+        let attachment = ImageTextAttachment(content: content, markdownSource: source, caption: caption,
+                                             maxWidth: maxWidth, fillsLine: revealed)
+        imageCache[key] = attachment
+        return attachment
     }
 
     private func videoAttachment(url: URL, source: String, maxWidth: CGFloat) -> VideoAttachment {
@@ -887,16 +1009,19 @@ final class WysiwygEngine {
             default: return .other
             }
         }
-        func isHidden(_ i: Int) -> Bool {
-            guard let font = storage.attribute(.font, at: i, effectiveRange: nil) as? NSFont else { return false }
-            return font.pointSize < 1 || font.isFixedPitch
-        }
-        func addKern(_ value: CGFloat, at i: Int) {
-            let existing = (storage.attribute(.kern, at: i, effectiveRange: nil) as? CGFloat) ?? 0
-            storage.addAttribute(.kern, value: existing + value, range: NSRange(location: i, length: 1))
-        }
 
+        // One pass over font runs (not a lookup per character): collapsed
+        // syntax and monospaced runs are skipped.
+        var hidden: [NSRange] = []
+        storage.enumerateAttribute(.font, in: NSRange(location: 0, length: length)) { value, range, _ in
+            if let font = value as? NSFont, font.pointSize < 1 || font.isFixedPitch { hidden.append(range) }
+        }
+        var chars = [unichar](repeating: 0, count: length)
+        string.getCharacters(&chars, range: NSRange(location: 0, length: length))
+
+        var gaps: [Int] = []
         var codeIndex = 0
+        var hiddenIndex = 0
         var previous: (index: Int, kind: Kind)? = nil
         for i in 0..<length {
             while codeIndex < codeBlocks.count, NSMaxRange(codeBlocks[codeIndex]) <= i { codeIndex += 1 }
@@ -904,15 +1029,20 @@ final class WysiwygEngine {
                 previous = nil
                 continue
             }
-            let c = string.character(at: i)
+            let c = chars[i]
             if c == 0x0A || c == 0x2028 || c == 0x2029 { previous = nil; continue }
-            if isHidden(i) { continue }
+            while hiddenIndex < hidden.count, NSMaxRange(hidden[hiddenIndex]) <= i { hiddenIndex += 1 }
+            if hiddenIndex < hidden.count, NSLocationInRange(i, hidden[hiddenIndex]) { continue }
             let k = kind(c)
             if let prev = previous,
                (prev.kind == .han && k == .latin) || (prev.kind == .latin && k == .han) {
-                addKern(boundaryGap, at: prev.index)
+                gaps.append(prev.index)
             }
             previous = (i, k)
+        }
+        for i in gaps {
+            let existing = (storage.attribute(.kern, at: i, effectiveRange: nil) as? CGFloat) ?? 0
+            storage.addAttribute(.kern, value: existing + boundaryGap, range: NSRange(location: i, length: 1))
         }
     }
 

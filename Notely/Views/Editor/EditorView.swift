@@ -11,6 +11,12 @@ struct EditorView: View {
     @State private var liveWordCount: Int
     @State private var liveCharCount: Int
     @State private var saveTask: Task<Void, Never>? = nil
+    /// The text as typed, kept without redrawing anything; `displayedText`
+    /// (outline, counts) catches up after a pause in typing.
+    @State private var live = LiveText()
+    @State private var catchUpTask: Task<Void, Never>? = nil
+    /// Bumped when `displayedText` must replace the editor's text.
+    @State private var textRevision = 0
 
     @AppStorage("notely.editorFont") private var editorFontName: String = "System"
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
@@ -51,9 +57,29 @@ struct EditorView: View {
     }
 
     var body: some View {
+        editor
+            .background(Color.editorBg)
+            .modifier(isDraft
+                      ? NoteToolbar(emptyTitle: "New Note")
+                      : NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
+            .onAppear {
+                loadNote()
+            }
+            .onChange(of: note.id) { _, _ in
+                loadNote()
+            }
+            // The open file changed on disk (external editor → store reload). Pull it
+            // in live, unless the user has unsaved local edits that would be lost.
+            .onChange(of: note.content) { _, newContent in
+                adoptExternalChangeIfClean(newContent)
+            }
+    }
+
+    private var editor: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .trailing) {
                 WysiwygEditor(
+                    textRevision: textRevision,
                     initialText: displayedText,
                     fontSize: fontSize,
                     lineHeight: lineHeight,
@@ -77,37 +103,29 @@ struct EditorView: View {
             }
         }
         .background(Color.editorBg)
-        .modifier(isDraft
-                  ? NoteToolbar(emptyTitle: "New Note")
-                  : NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
-        .onAppear {
-            loadNote()
-        }
-        .onChange(of: note.id) { _, _ in
-            loadNote()
-        }
-        // The open file changed on disk (external editor → store reload). Pull it
-        // in live, unless the user has unsaved local edits that would be lost.
-        .onChange(of: note.content) { _, newContent in
-            adoptExternalChangeIfClean(newContent)
-        }
     }
 
     private func loadNote() {
         saveTask?.cancel()
+        catchUpTask?.cancel()
         ImageLoader.shared.setBaseURL(note.url.deletingLastPathComponent())
+        live.text = note.content
         displayedText = note.content
+        textRevision += 1
         lastSyncedContent = note.content
         updateCounts(from: note.content)
     }
 
     /// Reconcile an on-disk change to the currently open note with the editor.
     private func adoptExternalChangeIfClean(_ newContent: String) {
-        switch ExternalSync.resolve(disk: newContent, displayed: displayedText, lastSynced: lastSyncedContent) {
+        switch ExternalSync.resolve(disk: newContent, displayed: live.text, lastSynced: lastSyncedContent) {
         case .ignore:
             lastSyncedContent = newContent
         case .adopt:
+            catchUpTask?.cancel()
+            live.text = newContent
             displayedText = newContent
+            textRevision += 1
             lastSyncedContent = newContent
             updateCounts(from: newContent)
         case .keepLocal:
@@ -115,10 +133,19 @@ struct EditorView: View {
         }
     }
 
+    /// On every keystroke: only what can't wait. The views that read the
+    /// whole text (outline, word count) update once typing
+    /// pauses, so a keystroke never redraws them.
     private func handleTextChange(_ newText: String) {
-        displayedText = newText
-        updateCounts(from: newText)
+        live.text = newText
         scheduleSave(newText)
+        catchUpTask?.cancel()
+        catchUpTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            displayedText = newText
+            updateCounts(from: newText)
+        }
     }
 
     private func updateCounts(from text: String) {
@@ -147,6 +174,11 @@ struct EditorView: View {
         }
     }
 
+}
+
+/// The latest typed text, held by reference so updating it redraws nothing.
+final class LiveText {
+    var text = ""
 }
 
 /// The window toolbar for the editor: the note's title and location in the
