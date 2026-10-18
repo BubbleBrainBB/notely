@@ -3,7 +3,7 @@ import Foundation
 // Standalone test runner for LinkRewrite. No Xcode test target exists; it is
 // Foundation-only, so this compiles directly with the source files:
 //
-//     swiftc Notely/Services/LibraryMove.swift Notely/Services/LinkRewrite.swift Tests/LinkRewriteTests.swift -o /tmp/linkrewrite-tests
+//     swiftc Notely/Services/InlineLink.swift Notely/Services/LibraryMove.swift Notely/Services/LinkRewrite.swift Tests/LinkRewriteTests.swift -o /tmp/linkrewrite-tests
 //     /tmp/linkrewrite-tests
 //
 // Exits non-zero if any assertion fails.
@@ -33,6 +33,8 @@ enum LinkRewriteTests {
         "/ws/Travel/cover.jpg",
         "/ws/Travel/my pic.png",
         "/ws/Travel/a#1.png",
+        "/ws/Travel/截图 (1).png",
+        "/ws/attachments/视频生成节点-1 (1).mp4",
         "/ws/Travel/attachments/local.png",
         "/ws/Travel/notes/x.png",
     ]
@@ -70,6 +72,12 @@ enum LinkRewriteTests {
         expect(rewrite("![Cover](cover.jpg \"The cover\")"), "![Cover](Travel/cover.jpg \"The cover\")",
                "alt and title kept")
         expect(rewrite("![](../attachments/clip.mov)"), "![](attachments/clip.mov)", "video")
+        expect(rewrite("![](截图 (1).png)"), "![](Travel/截图%20%281%29.png)", "parentheses in the name")
+        expect(rewrite("![](../attachments/视频生成节点-1 (1).mp4 \"Clip\")"),
+               "![](attachments/视频生成节点-1%20%281%29.mp4 \"Clip\")", "video with parentheses and a title")
+        expect(rewrite("![](<截图 (1).png>)"), "![](<Travel/截图 (1).png>)", "parentheses inside <…>")
+        expect(rewrite("![](cover.jpg) ![](截图 (1).png)"), "![](Travel/cover.jpg) ![](Travel/截图%20%281%29.png)",
+               "two images on one line")
         expect(rewrite("[Report](../doc.pdf)"), "[Report](doc.pdf)", "PDF link")
         expect(rewrite("See [notes](../Notes.md#todo)."), "See [notes](Notes.md#todo).", "link keeps its #section")
         expect(rewrite("[top](Kyoto.md#start)"), "[top](Kyoto.md#start)", "link to itself still resolves")

@@ -252,9 +252,9 @@ final class WysiwygEngine {
         }
 
         return [
-            // Images: ![alt](url)
+            // Images: ![alt](url), the destination read by `InlineLink`
             WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#),
+                pattern: InlineLink.imagePattern,
                 analyze: { match, str in
                     let full = match.range
                     let altRange = match.range(at: 1)
@@ -272,7 +272,7 @@ final class WysiwygEngine {
 
             // Links: [text](url)
             WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"\[([^\]]+)\]\(([^)]+)\)"#),
+                pattern: InlineLink.linkPattern,
                 analyze: { match, str in
                     let full = match.range
                     let textRange = match.range(at: 1)
@@ -527,7 +527,7 @@ final class WysiwygEngine {
         if let imageRule = inlineRules.first {
             imageRule.pattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
                 guard let match, !isInCode(match.range.location) else { return }
-                let urlString = nsString.substring(with: match.range(at: 2))
+                let urlString = nsString.substring(with: InlineLink.destinationRange(of: match))
                 let revealed = touchesCaret(match.range)
                 let markdown = revealed ? "" : nsString.substring(with: match.range)
                 let alt = nsString.substring(with: match.range(at: 1))

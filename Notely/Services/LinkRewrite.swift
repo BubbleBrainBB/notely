@@ -5,6 +5,7 @@ import Foundation
 /// so a note that changes folder — moved alone, or with a folder whose links
 /// lead out of it — can lose them. Foundation-only (whether a file is there is
 /// asked of `exists`), so Tests/LinkRewriteTests.swift runs it directly.
+/// Links are found by `InlineLink`, the grammar the editor renders with.
 ///
 /// A link is read the way the editor's `ImageLoader` reads it: relative to the
 /// note's folder first, then to the library. Only links that found a file
@@ -30,12 +31,13 @@ enum LinkRewrite {
         }
         var edits: [(range: NSRange, text: String)] = []
         let all = NSRange(location: 0, length: ns.length)
-        inlinePattern.enumerateMatches(in: content, range: all) { match, _, _ in
+        InlineLink.anyPattern.enumerateMatches(in: content, range: all) { match, _, _ in
             guard let match, !inCode(match.range) else { return }
             let isImage = ns.character(at: match.range.location) == 0x21 // "!"
-            let inner = match.range(at: 1)
-            if let text = rewrittenTarget(ns.substring(with: inner), isImage: isImage, context) {
-                edits.append((inner, text))
+            let destination = InlineLink.destinationRange(of: match)
+            if let text = rewrittenTarget(ns.substring(with: destination), isImage: isImage,
+                                          angled: InlineLink.isAngled(match), context) {
+                edits.append((destination, text))
             }
         }
         embedPattern.enumerateMatches(in: content, range: all) { match, _, _ in
@@ -78,8 +80,6 @@ enum LinkRewrite {
 
     // MARK: - Links
 
-    /// `![alt](target)` and `[text](target)`, as the editor matches them.
-    private static let inlinePattern = try! NSRegularExpression(pattern: #"!?\[[^\]\n]*\]\(([^)\n]+)\)"#)
     /// Obsidian embed: `![[file.ext]]`, `![[folder/file|300]]`.
     private static let embedPattern = try! NSRegularExpression(pattern: #"!\[\[([^\]\n]+)\]\]"#)
     /// A URL scheme: `https:`, `mailto:`, `file:`.
@@ -114,27 +114,11 @@ enum LinkRewrite {
         }
     }
 
-    /// The new inside of `( … )`, or nil to leave it.
-    private static func rewrittenTarget(_ inner: String, isImage: Bool, _ context: Context) -> String? {
-        let leading = String(inner.prefix(while: \.isWhitespace))
-        let rest = inner.dropFirst(leading.count)
-        var path: Substring, suffix: Substring, angled = false
-        if rest.hasPrefix("<"), let close = rest.firstIndex(of: ">") {
-            path = rest[rest.index(after: rest.startIndex)..<close]
-            suffix = rest[rest.index(after: close)...]
-            angled = true
-        } else {
-            path = rest.prefix(while: { !$0.isWhitespace })
-            suffix = rest.dropFirst(path.count)
-            // `![](my image.png)` loads in the editor: an unencoded space,
-            // not a title, so the whole thing is the path.
-            let title = suffix.drop(while: \.isWhitespace)
-            if let first = title.first, !"\"'(".contains(first) {
-                let trimmed = rest.reversed().drop(while: \.isWhitespace)
-                path = rest.prefix(trimmed.count)
-                suffix = rest.dropFirst(path.count)
-            }
-        }
+    /// The new destination of `[…](destination)` (inside the brackets when
+    /// written `<…>`), or nil to leave it.
+    private static func rewrittenTarget(_ destination: String, isImage: Bool, angled: Bool,
+                                        _ context: Context) -> String? {
+        var path = Substring(destination)
         // A link's `#section` is not part of the file; an image's whole target
         // is a path, as `ImageLoader` reads it.
         var fragment = ""
@@ -148,8 +132,7 @@ enum LinkRewrite {
         guard let target = context.newTarget(for: decoded) else { return nil }
 
         let relative = relativePath(from: context.newFolder, to: target)
-        let written = angled ? "<\(relative)>" : encoded(relative)
-        return leading + written + fragment + suffix
+        return (angled ? relative : encoded(relative)) + fragment
     }
 
     /// The new inside of `![[ … ]]`, or nil to leave it. Only embeds written

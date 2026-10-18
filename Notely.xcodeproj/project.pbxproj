@@ -17,6 +17,7 @@
 		2577B1CBF8791056FAE47ECF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B580DFD3B4507EAAC4C0DB97 /* SettingsView.swift */; };
 		333111173DC8DD349E4C037F /* FrontmatterAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA6F511541193EB58C2C2BB /* FrontmatterAttachment.swift */; };
 		33D9DA3D8962040517AE5746 /* FolderOpenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC832FB4A06344B92E957336 /* FolderOpenView.swift */; };
+		3D35EC8F5BBB43A3AC053312 /* InlineLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACD2F5A00559F187AD36321 /* InlineLink.swift */; };
 		402621765996F526DB134691 /* WysiwygEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */; };
 		43A16CAEAE433C372A8DEF37 /* OutlineRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = B834F6F4A4E86F46D84CE29F /* OutlineRail.swift */; };
 		4699BE42784CA2058A721896 /* SearchPopover.swift in Sources */ = {isa = PBXBuildFile; fileRef = E393329227C72C2C990CD4DF /* SearchPopover.swift */; };
@@ -75,6 +76,7 @@
 		4967BB900518D608FE8A06C5 /* NoteCardSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteCardSummary.swift; sourceTree = "<group>"; };
 		4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleExtractor.swift; sourceTree = "<group>"; };
 		4AA0BAAC4ED8F5F19B3B740C /* VideoAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAttachment.swift; sourceTree = "<group>"; };
+		4ACD2F5A00559F187AD36321 /* InlineLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineLink.swift; sourceTree = "<group>"; };
 		4DCE99219CB55CD44FB2276B /* MemoFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoFormat.swift; sourceTree = "<group>"; };
 		62A4085CE734D06BACDB912F /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
 		65A3B1ABF107ECCBBF6D9172 /* ImageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachment.swift; sourceTree = "<group>"; };
@@ -220,6 +222,7 @@
 				9390B0509CE4E1E21BA020B4 /* FileNoteStore.swift */,
 				CFB02B3CFC21C706194A9DB5 /* FrontmatterParser.swift */,
 				3B421ED545AE467E742378B3 /* FuzzySearch.swift */,
+				4ACD2F5A00559F187AD36321 /* InlineLink.swift */,
 				333BF991B70DE6848632A323 /* LibraryMove.swift */,
 				02E74CD2E4CC0B8532F2FAF8 /* LinkRewrite.swift */,
 				4DCE99219CB55CD44FB2276B /* MemoFormat.swift */,
@@ -352,6 +355,7 @@
 				7BD8566622A1BE1171488C6B /* FrontmatterParser.swift in Sources */,
 				C87868DB75BF5626922EB152 /* FuzzySearch.swift in Sources */,
 				C034C801EBAB47DF6156C0A0 /* ImageAttachment.swift in Sources */,
+				3D35EC8F5BBB43A3AC053312 /* InlineLink.swift in Sources */,
 				1D37F3A614D549FDEFA13741 /* LatexMath.swift in Sources */,
 				B7E7946043555D673AD76D4B /* LibraryMove.swift in Sources */,
 				51E25C4CA0FD5BEDFB718359 /* LinkRewrite.swift in Sources */,
