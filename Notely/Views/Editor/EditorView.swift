@@ -34,11 +34,16 @@ struct EditorView: View {
     /// the correct heading when the rail posts `.scrollToHeading`.
     private var outlineHeadings: [OutlineHeading] {
         let ns = displayedText as NSString
-        return WysiwygTextView.headingLineRanges(in: ns).enumerated().map { i, range in
-            let line = ns.substring(with: range).trimmingCharacters(in: .whitespaces)
+        let ranges = WysiwygTextView.headingLineRanges(in: ns)
+        return ranges.enumerated().map { i, range in
+            let line = ns.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
             let level = line.prefix(while: { $0 == "#" }).count
             let text = line.dropFirst(level).trimmingCharacters(in: .whitespaces)
-            return OutlineHeading(index: i, level: level, text: String(text))
+            let bodyStart = NSMaxRange(range)
+            let bodyEnd = i + 1 < ranges.count ? ranges[i + 1].location : ns.length
+            let body = ns.substring(with: NSRange(location: bodyStart, length: bodyEnd - bodyStart))
+            return OutlineHeading(index: i, level: level, text: String(text),
+                                  summary: OutlineSectionPreview.text(of: body))
         }
     }
 
@@ -96,9 +101,9 @@ struct EditorView: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.editorBg)
 
-                // Navigation lives at the right edge: a thin tick rail that
-                // expands to a clickable outline on hover. It never covers the
-                // centered text and is independent of the info popover.
+                // Navigation lives at the right edge: a thin tick rail whose
+                // ticks swell under the pointer, with a preview card for the
+                // nearest heading. It never covers the centered text.
                 OutlineRail(headings: outlineHeadings)
             }
         }
@@ -375,15 +380,6 @@ struct RemovesSystemTitle: ViewModifier {
     }
 }
 
-/// A heading in the document outline. `index` is the heading's ordinal in
-/// document order, which is the payload used to scroll the editor.
-struct OutlineHeading: Identifiable {
-    let index: Int
-    let level: Int
-    let text: String
-    var id: Int { index }
-}
-
 /// Lightweight, glanceable document info shown in a popover anchored to the
 /// toolbar info button — stats and tags only (navigation lives in the rail).
 struct DocumentInfoPopover: View {
@@ -433,124 +429,6 @@ struct DocumentInfoPopover: View {
             }
         }
         .frame(width: 240)
-    }
-}
-
-/// Right-edge navigation: a thin column of tick marks (one per heading) that
-/// expands on hover into a clickable outline. Clicking a row scrolls the editor
-/// to that heading via the `.scrollToHeading` notification.
-struct OutlineRail: View {
-    let headings: [OutlineHeading]
-    @State private var hovering = false
-
-    var body: some View {
-        if headings.isEmpty {
-            Color.clear.frame(width: 0)
-        } else {
-            content
-                .onHover { hovering = $0 }
-                .animation(.easeInOut(duration: 0.15), value: hovering)
-                .padding(.trailing, 18)
-                .padding(.vertical, 16)
-        }
-    }
-
-    @ViewBuilder private var content: some View {
-        if hovering {
-            expandedList
-        } else {
-            ticks
-        }
-    }
-
-    private var ticks: some View {
-        VStack(alignment: .trailing, spacing: 7) {
-            ForEach(headings) { h in
-                Capsule()
-                    .fill(Color.tertiaryText.opacity(0.45))
-                    .frame(width: tickWidth(h.level), height: 2)
-            }
-        }
-        .padding(.horizontal, 6)
-        .contentShape(Rectangle())
-    }
-
-    private func tickWidth(_ level: Int) -> CGFloat {
-        switch level {
-        case 1: return 18
-        case 2: return 13
-        default: return 9
-        }
-    }
-
-    private var expandedList: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Outline")
-                    .font(.notely(11, weight: .semibold))
-                    .foregroundColor(.tertiaryText)
-                    .tracking(0.5)
-                    .textCase(.uppercase)
-                    .padding(.horizontal, 8)
-                    .padding(.bottom, 6)
-
-                ForEach(headings) { h in
-                    OutlineRow(heading: h)
-                }
-            }
-            .padding(10)
-        }
-        .frame(width: 240)
-        .frame(maxHeight: 440)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.borderColor, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 14, x: -3, y: 3)
-    }
-}
-
-/// A single outline row with hover feedback. Clicking scrolls the editor to the
-/// heading via `.scrollToHeading`.
-private struct OutlineRow: View {
-    let heading: OutlineHeading
-    @State private var hovering = false
-
-    var body: some View {
-        Button {
-            NotificationCenter.default.post(
-                name: .scrollToHeading, object: nil, userInfo: ["index": heading.index]
-            )
-        } label: {
-            HStack(spacing: 6) {
-                // A small level dot keeps the hierarchy legible without the
-                // foreign "H1/H2" chips of the old inspector.
-                Circle()
-                    .fill(Color.accent.opacity(heading.level == 1 ? 0.55 : 0.28))
-                    .frame(width: 4, height: 4)
-                Text(heading.text)
-                    .font(.notely(13, weight: heading.level == 1 ? .semibold : .regular))
-                    .foregroundColor(hovering ? .accent : (heading.level == 1 ? .primaryText : .secondaryText))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-            }
-            .padding(.vertical, 5)
-            .padding(.horizontal, 8)
-            .padding(.leading, CGFloat(max(0, heading.level - 1)) * 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(hovering ? Color.accentHover : Color.clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
     }
 }
 
