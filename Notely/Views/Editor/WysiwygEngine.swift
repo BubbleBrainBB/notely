@@ -1021,7 +1021,9 @@ final class WysiwygEngine {
     private func tableAttachment(for table: MarkdownTable, source: String, font: NSFont, maxWidth: CGFloat) -> TableAttachment {
         let key = "\(Int(maxWidth))|\(source)"
         if let cached = tableCache[key] { return cached }
-        let attachment = TableAttachment(table: table, markdownSource: source, font: font, maxWidth: maxWidth)
+        let strong = style.bold[.foregroundColor] as? NSColor ?? MarkdownPalette.strong
+        let attachment = TableAttachment(table: table, markdownSource: source, font: font, maxWidth: maxWidth,
+                                         strongColor: strong)
         tableCache[key] = attachment
         return attachment
     }
