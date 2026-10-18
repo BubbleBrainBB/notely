@@ -643,10 +643,14 @@ final class WysiwygTextView: NSTextView {
         if isRestyling { return }
         Diag.log("didChangeText string='\(string.prefix(30))'")
         let edit = pendingEdit
+        let edited = pendingEditLocation
         pendingEdit = nil
+        pendingEditLocation = nil
         let caret = selectedRange().location
+        // The edited line as well as the caret's: they differ when the edit
+        // isn't typed at the caret (a checkbox clicked on another line).
         let lines: [Int]? = switch edit {
-        case .withinLine?, .joinedLines?: [caret]
+        case .withinLine?, .joinedLines?: [caret] + (edited.map { [$0] } ?? [])
         case .newLine?: [caret, max(0, caret - 1)]
         default: nil
         }
@@ -664,6 +668,8 @@ final class WysiwygTextView: NSTextView {
     /// several edits before `didChangeText` — restyles the whole note.
     private enum LineEdit { case withinLine, newLine, joinedLines, other }
     private var pendingEdit: LineEdit?
+    /// Where the edit under way starts, for restyling its line.
+    private var pendingEditLocation: Int?
 
     override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
         let allowed = super.shouldChangeText(in: range, replacementString: replacementString)
@@ -683,6 +689,7 @@ final class WysiwygTextView: NSTextView {
             } else {
                 kind = .other
             }
+            if pendingEdit == nil { pendingEditLocation = range.location }
             pendingEdit = pendingEdit == nil ? kind : (pendingEdit == .withinLine && kind == .withinLine ? .withinLine : .other)
         }
         return allowed
