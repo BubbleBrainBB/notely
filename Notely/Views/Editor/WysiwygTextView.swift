@@ -194,8 +194,8 @@ struct WysiwygEditor: NSViewRepresentable {
         textView.fontName = fontName
         // Keep the caret colored by the live theme accent (it can change at
         // runtime via Settings without the text view being recreated).
-        textView.insertionPointColor = NSColor(Color.accent)
-        textView.selectedTextAttributes = [.backgroundColor: NSColor(Color.accent).withAlphaComponent(0.18)]
+        textView.insertionPointColor = ThemeManager.shared.accentNSColor
+        textView.selectedTextAttributes = [.backgroundColor: ThemeManager.shared.accentNSColor.withAlphaComponent(0.18)]
         textView.rebuildEngineAndRestyleIfNeeded()
         textView.fitFrameToContent()
     }
@@ -307,9 +307,9 @@ final class WysiwygTextView: NSTextView {
         allowsUndo = true
         usesAdaptiveColorMappingForDarkAppearance = true
         font = WysiwygEngine.resolveFont(name: fontName, size: fontSize)
-        textColor = NSColor(named: "PrimaryText")
+        textColor = MarkdownPalette.primary
         backgroundColor = .clear
-        insertionPointColor = NSColor(Color.accent)
+        insertionPointColor = ThemeManager.shared.accentNSColor
         autoresizingMask = [.width]
         // Top/bottom breathing room for the text column; the scroll view adds
         // the toolbar's height on top when it extends under it.
@@ -595,7 +595,7 @@ final class WysiwygTextView: NSTextView {
         let line = layoutManager.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
         let marks = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
         let origin = textContainerOrigin
-        let faint = NSColor(Color.faintIcon)
+        let faint = NSColor.themed(\.faintIcon)
 
         let titleFont = WysiwygEngine.resolveFont(name: fontName, size: 30, weight: .semibold)
         let title = NSAttributedString(string: placeholder.title,
@@ -625,6 +625,14 @@ final class WysiwygTextView: NSTextView {
     func rebuildEngineAndRestyle() {
         rebuildEngine()
         restyle()
+    }
+
+    /// Light ↔ dark. Colors in the text follow by themselves, but tables,
+    /// math and front matter are drawn into cached images: rebuild those.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard engine != nil else { return }
+        rebuildEngineAndRestyle()
     }
 
     /// Rebuild the styling engine + restyle only when the font size or line

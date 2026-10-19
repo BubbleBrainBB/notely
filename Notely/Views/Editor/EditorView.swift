@@ -63,7 +63,7 @@ struct EditorView: View {
 
     var body: some View {
         editor
-            .background(Color.editorBg)
+            .background(Color.pageContentBg)
             .modifier(isDraft
                       ? NoteToolbar(emptyTitle: "New Note")
                       : NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
@@ -99,7 +99,7 @@ struct EditorView: View {
                     onTextChange: handleTextChange
                 )
                 .frame(maxWidth: .infinity)
-                .background(Color.editorBg)
+                .background(Color.pageContentBg)
 
                 // Navigation lives at the right edge: a thin tick rail whose
                 // ticks swell under the pointer, with a preview card for the
@@ -107,7 +107,7 @@ struct EditorView: View {
                 OutlineRail(headings: outlineHeadings)
             }
         }
-        .background(Color.editorBg)
+        .background(Color.pageContentBg)
     }
 
     private func loadNote() {
@@ -291,17 +291,21 @@ struct NoteToolbar: ViewModifier {
 }
 
 /// A toolbar item drawn bare: on macOS 26 the shared Liquid Glass
-/// background is hidden (see SidebarToggleItem).
+/// background is hidden (see SidebarToggleItem) — except for the icons in
+/// the Glass theme, which sit in white glass capsules (board ㊳).
 struct FlatToolbarItem<Content: View>: ToolbarContent {
     /// `.automatic` lines up at the trailing edge, after the title's spacer;
     /// `.primaryAction` would pull the icons to the leading side on macOS.
     var placement: ToolbarItemPlacement = .automatic
+    /// Whether the Glass theme may put this item in a glass capsule. The
+    /// title stays bare text in every theme.
+    var glassInGlassTheme = true
     @ViewBuilder let content: () -> Content
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
             ToolbarItem(placement: placement, content: content)
-                .sharedBackgroundVisibility(.hidden)
+                .sharedBackgroundVisibility(glassInGlassTheme && ThemeManager.shared.isGlass ? .visible : .hidden)
         } else {
             ToolbarItem(placement: placement, content: content)
         }
@@ -323,7 +327,7 @@ struct NoteTitleHeader: ToolbarContent {
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
-            FlatToolbarItem(placement: .navigation) {
+            FlatToolbarItem(placement: .navigation, glassInGlassTheme: false) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(Self.styledTitle(title, fontName: editorFontName))
                         .foregroundColor(.secondaryText)

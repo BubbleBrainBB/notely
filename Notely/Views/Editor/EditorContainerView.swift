@@ -20,7 +20,7 @@ struct EditorContainerView: View {
                 EmptyEditorView()
             }
         }
-        .background(Color.editorBg)
+        .background(Color.pageContentBg)
     }
 }
 
@@ -39,7 +39,7 @@ struct EmptyEditorView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color.editorBg)
+        .background(Color.pageContentBg)
         .modifier(NoteToolbar())
     }
 }

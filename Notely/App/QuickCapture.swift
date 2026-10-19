@@ -207,12 +207,12 @@ private struct CaptureView: View {
         .padding(.bottom, 12)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.97))
+                .fill(Color.surface)
                 .shadow(color: .black.opacity(0.22), radius: 26, y: 12)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.black.opacity(0.06), lineWidth: 1)
+                .strokeBorder(Color.pageEdge, lineWidth: 1)
         )
         .background(
             Button("Cancel", action: onCancel)

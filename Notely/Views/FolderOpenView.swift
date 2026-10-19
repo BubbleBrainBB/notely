@@ -30,7 +30,7 @@ struct FolderOpenView: View {
         .opacity(appeared ? 1 : 0)
         .animation(.easeOut(duration: 0.6), value: appeared)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.fromHex("#FDFDFC"))
+        .background(Color.editorBg)
         .ignoresSafeArea()
         .navigationTitle("")
         // One surface up to the top edge: no toolbar strip, no separator line
@@ -44,7 +44,7 @@ struct FolderOpenView: View {
             Text(Self.productName)
                 .font(.custom("Didot-Italic", size: 76))
                 .tracking(-0.5)
-                .foregroundColor(Color.fromHex("#2B2A26"))
+                .foregroundColor(.primaryText)
             Text("Your notes, as plain files.")
                 .font(Font(WysiwygEngine.resolveFont(name: "New York", size: 15)))
                 .foregroundColor(.tertiaryText)
@@ -280,7 +280,7 @@ private struct MissingFolderPanel: View {
                 .font(.system(size: 19, weight: .light))
                 .foregroundColor(.iconMuted)
                 .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color.fromHex("#F3F2EF")))
+                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Color.inlineFill))
                 .padding(.bottom, 20)
 
             Text(BodyFace.text(volume == nil

@@ -62,7 +62,7 @@ struct MemosView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
-        .background(Color.editorBg)
+        .background(Color.pageContentBg)
         .navigationTitle("Memos")
         .navigationSubtitle("")
     }
@@ -220,7 +220,7 @@ struct MemoHeatmapView: View {
             let count = counts[day] ?? 0
             let level = MemoHeatmap.level(for: count)
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(level == 0 ? Color.fromHex("#F1F0EC") : Color.accent.opacity(Self.shades[level]))
+                .fill(level == 0 ? Color.inlineFill : Color.accent.opacity(Self.shades[level]))
                 .frame(width: cell, height: cell)
                 .overlay(
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -427,7 +427,7 @@ private struct MemoRow: View {
             }
             var run = AttributedString(ns.substring(with: tag.range))
             run.foregroundColor = Color.secondaryText
-            run.backgroundColor = Color.fromHex("#F1F1EF")
+            run.backgroundColor = Color.inlineFill
             if let encoded = tag.name.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) {
                 run.link = URL(string: "notely-tag://" + encoded)
             }

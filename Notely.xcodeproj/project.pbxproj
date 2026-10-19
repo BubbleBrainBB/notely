@@ -15,6 +15,7 @@
 		1D37F3A614D549FDEFA13741 /* LatexMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = D918A428AAFA3CCB3448EFD9 /* LatexMath.swift */; };
 		205914B21783161A3319C21D /* NoteTreeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFF80F0A501C42C6363C311D /* NoteTreeState.swift */; };
 		2577B1CBF8791056FAE47ECF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B580DFD3B4507EAAC4C0DB97 /* SettingsView.swift */; };
+		2E83391C9DA508FD453E1906 /* ThemePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8E0C89B63AFC7A7FC3DE27 /* ThemePalette.swift */; };
 		333111173DC8DD349E4C037F /* FrontmatterAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA6F511541193EB58C2C2BB /* FrontmatterAttachment.swift */; };
 		33D9DA3D8962040517AE5746 /* FolderOpenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC832FB4A06344B92E957336 /* FolderOpenView.swift */; };
 		3D35EC8F5BBB43A3AC053312 /* InlineLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACD2F5A00559F187AD36321 /* InlineLink.swift */; };
@@ -112,6 +113,7 @@
 		FC13FB98F064F67AB2187636 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		FC5ED0A570180C8D5FC1828D /* WindowCloseBehavior.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCloseBehavior.swift; sourceTree = "<group>"; };
 		FC832FB4A06344B92E957336 /* FolderOpenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderOpenView.swift; sourceTree = "<group>"; };
+		FE8E0C89B63AFC7A7FC3DE27 /* ThemePalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePalette.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -166,6 +168,7 @@
 			children = (
 				62A4085CE734D06BACDB912F /* ColorTokens.swift */,
 				D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */,
+				FE8E0C89B63AFC7A7FC3DE27 /* ThemePalette.swift */,
 			);
 			path = Utils;
 			sourceTree = "<group>";
@@ -378,6 +381,7 @@
 				6AC7EC19D22E8CD86E25E468 /* SidebarWidthPolicy.swift in Sources */,
 				73E9A7FD99DEA3EC14C4B6A8 /* TagExtractor.swift in Sources */,
 				FF1561D3A5311E63D449EB81 /* TagSearch.swift in Sources */,
+				2E83391C9DA508FD453E1906 /* ThemePalette.swift in Sources */,
 				DB4658A93567D89048472713 /* TitleExtractor.swift in Sources */,
 				787B3F9A8DF011D63818DD13 /* VideoAttachment.swift in Sources */,
 				80158F3C4B2D504022DD1B78 /* WindowCloseBehavior.swift in Sources */,

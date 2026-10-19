@@ -16,7 +16,7 @@ struct FilePreviewView: View {
             .id(file.id)
             .padding(file.kind == .pdf ? 0 : 40)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.editorBg)
+            .background(Color.pageContentBg)
             .navigationTitle(file.name)
             .navigationSubtitle(subtitle)
             .modifier(RemovesSystemTitle())

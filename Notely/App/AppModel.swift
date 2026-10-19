@@ -28,7 +28,7 @@ final class AppModel {
     private(set) var frameRevealed = true
 
     /// The window ground: plain white during the welcome hand-over.
-    var groundColor: Color { frameRevealed ? .windowGround : .editorBg }
+    var groundColor: Color { frameRevealed ? .groundFill : .editorBg }
 
     /// Call right before opening a library from the welcome page.
     func beginFrameIntro() {

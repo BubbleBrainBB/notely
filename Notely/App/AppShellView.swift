@@ -58,13 +58,13 @@ struct AppShellView: View {
                             .clipShape(pageShape)
                             .background {
                                 pageShape
-                                    .fill(Color.editorBg)
+                                    .fill(framed ? Color.pageSheet : Color.editorBg)
                                     .shadow(color: .black.opacity(framed ? 0.05 : 0), radius: 1.5, y: 1)
                                     .shadow(color: .black.opacity(framed ? 0.04 : 0), radius: 8, y: 4)
                             }
                             .overlay {
                                 pageShape
-                                    .strokeBorder(Color.black.opacity(framed ? 0.06 : 0), lineWidth: 1)
+                                    .strokeBorder(Color.pageEdge.opacity(framed ? 1 : 0), lineWidth: 1)
                                     .allowsHitTesting(false)
                             }
                             // Opened from the welcome page, the page starts as the
@@ -79,7 +79,7 @@ struct AppShellView: View {
 
                     // Spotlight-style quick search, floating over the window.
                     if appModel.isSearchPresented {
-                        Color.black.opacity(0.12)
+                        Color.scrim
                             .ignoresSafeArea()
                             .onTapGesture { appModel.dismissSearch() }
                             .transition(.opacity)
@@ -90,13 +90,20 @@ struct AppShellView: View {
 
                     // Settings: a card over the dimmed window (design board ㉑ B).
                     if appModel.showSettings {
-                        Color.black.opacity(0.18)
+                        // Lighter behind Glass, so the note reads through the card.
+                        Color.scrim.opacity(ThemeManager.shared.isGlass ? 0.45 : 1)
                             .ignoresSafeArea()
                             .onTapGesture { appModel.showSettings = false }
                             .transition(.opacity)
                         SettingsModal()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    }
+                }
+                // Glass: the window itself is see-through (board ㊳).
+                .background {
+                    if ThemeManager.shared.isGlass {
+                        BehindWindowBlur().ignoresSafeArea()
                     }
                 }
                 .animation(.easeOut(duration: 0.16), value: appModel.isSearchPresented)
@@ -111,5 +118,66 @@ struct AppShellView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: store.isOpen)
+    }
+}
+
+/// The Glass theme's window: whatever is behind it (desktop, other windows)
+/// shows through. On macOS 26 it is native Liquid Glass (regular: clearly
+/// see-through, blurred just enough to read on); earlier systems get the
+/// sidebar's behind-window blur, kept active so it doesn't turn opaque gray
+/// when the window loses focus. Either way the window draws no opaque
+/// background of its own while it shows; leaving (another theme) puts it back.
+private struct BehindWindowBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let host = SeeThroughHostView()
+        let backdrop: NSView
+        if #available(macOS 26, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            backdrop = glass
+        } else {
+            let blur = NSVisualEffectView()
+            blur.material = .sidebar
+            blur.blendingMode = .behindWindow
+            blur.state = .active
+            backdrop = blur
+        }
+        backdrop.frame = host.bounds
+        backdrop.autoresizingMask = [.width, .height]
+        host.addSubview(backdrop)
+        return host
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class SeeThroughHostView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        window.isOpaque = false
+        window.backgroundColor = .clear
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil, let window {
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
+}
+
+/// Glass: SwiftUI paints no window background of its own (macOS 15+), so
+/// the see-through blur under the shell isn't covered.
+struct ClearWindowContainer: ViewModifier {
+    let isGlass: Bool
+
+    func body(content: Content) -> some View {
+        if isGlass, #available(macOS 15, *) {
+            content.containerBackground(.clear, for: .window)
+        } else {
+            content
+        }
     }
 }

@@ -319,7 +319,7 @@ struct ShortcutHint: View {
             .frame(height: 18)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(boxed ? Color.fromHex("#FAFAF9") : Color.clear)
+                    .fill(boxed ? Color.surface : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -392,6 +392,7 @@ struct SidebarRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
             )
             .contentShape(Rectangle())
         }
@@ -594,6 +595,7 @@ private struct NoteRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
             )
             .contentShape(Rectangle())
         }
@@ -678,6 +680,7 @@ private struct FileRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
             )
             .contentShape(Rectangle())
         }

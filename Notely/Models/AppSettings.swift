@@ -73,6 +73,19 @@ enum AppSettings {
     }
 
 
+    static let colorThemeKey = "notely.colorTheme"
+    static let appearanceModeKey = "notely.appearanceMode"
+
+    static var colorTheme: AppTheme {
+        get { UserDefaults.standard.string(forKey: colorThemeKey).flatMap(AppTheme.init(rawValue:)) ?? .paper }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: colorThemeKey) }
+    }
+
+    static var appearanceMode: AppearanceMode {
+        get { UserDefaults.standard.string(forKey: appearanceModeKey).flatMap(AppearanceMode.init(rawValue:)) ?? .light }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: appearanceModeKey) }
+    }
+
     /// The 拾页 design's blue.
     static let defaultAccentHex = "#1D6FC2"
 

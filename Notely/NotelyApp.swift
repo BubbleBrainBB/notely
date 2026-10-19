@@ -54,6 +54,7 @@ struct WindowRoot: View {
             // accent-driven Color tokens are re-read everywhere. The @State above
             // lives on WindowRoot, which keeps its identity, so the open folder
             // and notes survive an accent switch.
+            .modifier(ClearWindowContainer(isGlass: themeManager.isGlass))
             .id(themeManager.renderKey)
     }
 }

@@ -4,40 +4,53 @@ import Observation
 
 // MARK: - Palette
 
-/// The app's single light palette, taken from the 拾页 design comps
-/// (neutral warm-gray surfaces, ink text, blue accent).
+/// The app's surface and text colors. Each one follows the chosen theme
+/// (Settings › Appearance) and resolves light or dark at draw time, so the
+/// whole app — editor included — flips with the appearance.
 enum Palette {
-    static let appBg = Color.fromHex("#FFFFFF")
-    static let sidebarBg = Color.fromHex("#F7F7F5")
+    static var appBg: Color { themed(\.page) }
+    static var sidebarBg: Color { themed(\.sidebar) }
     /// The window's ground (design board ㉗ D): the sidebar sits on it and
-    /// the editor floats above it as a white page.
-    static let windowGround = Color.fromHex("#EFEEEA")
+    /// the editor floats above it as a page.
+    static var windowGround: Color { themed(\.ground) }
     /// Fill behind the selected sidebar row, on the window ground.
-    static let groundSelectedBg = Color.fromHex("#E2E1DC")
-    static let editorBg = Color.fromHex("#FFFFFF")
-    static let primaryText = Color.fromHex("#37352F")
-    static let secondaryText = Color.fromHex("#55534E")
-    static let tertiaryText = Color.fromHex("#73726E")
+    static var groundSelectedBg: Color { themed(\.groundSelected) }
+    static var editorBg: Color { themed(\.page) }
+    static var primaryText: Color { themed(\.text) }
+    static var secondaryText: Color { themed(\.text2) }
+    static var tertiaryText: Color { themed(\.text3) }
     /// Default (unselected) stroke color for sidebar and toolbar icons.
-    static let iconMuted = Color.fromHex("#8F8E8A")
+    static var iconMuted: Color { themed(\.icon) }
     /// Pane dividers (sidebar edge, editor header rule).
-    static let border = Color.fromHex("#EBEBE9")
-    static let codeBlockBg = Color.fromHex("#F7F7F5")
+    static var border: Color { themed(\.border) }
+    static var codeBlockBg: Color { themed(\.codeBlock) }
     /// Elevated surface for cards, popovers, selected segments.
-    static let surface = Color.fromHex("#FFFFFF")
-    /// Fill behind the selected sidebar row.
-    static let selectedBg = Color.fromHex("#EBEBE9")
+    static var surface: Color { themed(\.page) }
+    /// Fill behind a selected row on the page.
+    static var selectedBg: Color { themed(\.selected) }
     /// Hairline border for raised controls (the sidebar's New Note button).
-    static let controlBorder = Color.fromHex("#E3E3E0")
+    static var controlBorder: Color { themed(\.controlBorder) }
+
+    static func themed(_ key: KeyPath<ThemePalette, UInt32>) -> Color {
+        Color(nsColor: .themed(key))
+    }
 }
 
-/// Holds the user's accent color. Changing it reskins the whole app (the root
-/// view rebuilds via `.id` on `renderKey`).
+/// Holds the color theme, light/dark mode and accent. Changing the theme or
+/// accent reskins the whole app (the root view rebuilds via `.id` on
+/// `renderKey`); changing the mode only swaps the app's appearance, which
+/// every themed color follows on its own.
 @Observable
 final class ThemeManager {
     static let shared = ThemeManager()
 
+    /// The theme the dynamic colors draw with. They resolve while drawing,
+    /// outside observation, so they read this mirror of `theme`.
+    static var activeTheme: AppTheme = AppSettings.colorTheme
+
     var accentHex: String
+    var theme: AppTheme
+    var mode: AppearanceMode
 
     private init() {
         // One-time migration from the old multi-theme build: its accents were
@@ -48,20 +61,78 @@ final class ThemeManager {
             AppSettings.accentColorHex = AppSettings.defaultAccentHex
         }
         accentHex = AppSettings.accentColorHex
+        theme = AppSettings.colorTheme
+        mode = AppSettings.appearanceMode
+        Self.activeTheme = theme
     }
 
-    var accentColor: Color { Color.fromHex(accentHex) }
+    /// The Ink accent is the theme's own ink, so it stays visible in dark.
+    static let inkAccentHex = "#37352F"
+
+    var accentNSColor: NSColor {
+        if accentHex.caseInsensitiveCompare(Self.inkAccentHex) == .orderedSame { return .themed(\.text) }
+        return NSColor.hex(Color.hexValue(accentHex) ?? 0x1D6FC2)
+    }
+
+    var accentColor: Color { Color(nsColor: accentNSColor) }
 
     /// A stable key that changes whenever the visible palette changes.
-    var renderKey: String { accentHex }
+    var renderKey: String { accentHex + "|" + theme.rawValue }
+
+    var isGlass: Bool { theme == .glass }
 
     func setAccent(_ hex: String) {
         accentHex = hex
         AppSettings.accentColorHex = hex
     }
 
+    func setTheme(_ newTheme: AppTheme) {
+        guard newTheme != theme else { return }
+        Self.activeTheme = newTheme
+        theme = newTheme
+        AppSettings.colorTheme = newTheme
+    }
+
+    func setMode(_ newMode: AppearanceMode) {
+        mode = newMode
+        AppSettings.appearanceMode = newMode
+        applyAppearance()
+    }
+
     func applyAppearance() {
-        NSApp?.appearance = NSAppearance(named: .aqua)
+        switch mode {
+        case .light: NSApp?.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp?.appearance = NSAppearance(named: .darkAqua)
+        case .auto: NSApp?.appearance = nil
+        }
+    }
+}
+
+// MARK: - Dynamic colors
+
+extension NSAppearance {
+    var isDark: Bool { bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+}
+
+extension NSColor {
+    static func hex(_ value: UInt32, alpha: CGFloat = 1) -> NSColor {
+        NSColor(srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+                green: CGFloat((value >> 8) & 0xFF) / 255,
+                blue: CGFloat(value & 0xFF) / 255,
+                alpha: alpha)
+    }
+
+    /// A color from the active theme's palette, light or dark by the
+    /// appearance it is drawn in.
+    static func themed(_ key: KeyPath<ThemePalette, UInt32>) -> NSColor {
+        NSColor(name: nil) { appearance in
+            .hex(ThemePalette.palette(ThemeManager.activeTheme, dark: appearance.isDark)[keyPath: key])
+        }
+    }
+
+    /// The same in every theme, one value for light and one for dark.
+    static func adaptive(light: UInt32, dark: UInt32, alpha: CGFloat = 1) -> NSColor {
+        NSColor(name: nil) { appearance in .hex(appearance.isDark ? dark : light, alpha: alpha) }
     }
 }
 
@@ -84,16 +155,56 @@ extension Color {
     static var surface: Color { Palette.surface }
     static var selectedBg: Color { Palette.selectedBg }
     static var controlBorder: Color { Palette.controlBorder }
+    /// A group of rows on the page (Settings cards).
+    static var card: Color { Palette.themed(\.card) }
     /// Quietest text: counts beside sidebar folders.
-    static var faintText: Color { Color.fromHex("#9B9A97") }
+    static var faintText: Color { Palette.themed(\.faintText) }
     /// Quietest icon: documents in the sidebar tree.
-    static var faintIcon: Color { Color.fromHex("#B4B3AF") }
+    static var faintIcon: Color { Palette.themed(\.faintIcon) }
+    /// Inline code and other small tinted runs.
+    static var inlineFill: Color { Palette.themed(\.inlineCode) }
 
     static var accentHover: Color { Color.accent.opacity(0.10) }
     static var accentSelected: Color { Color.accent.opacity(0.06) }
-    static var cardHover: Color { Color.primaryText.opacity(0.04) }
-    static var searchFieldBg: Color { Color.primaryText.opacity(0.03) }
-    static var quietSurface: Color { Color.primaryText.opacity(0.025) }
+    static var cardHover: Color { Color.primaryText.opacity(0.05) }
+    static var searchFieldBg: Color { Color.primaryText.opacity(0.04) }
+    static var quietSurface: Color { Color.primaryText.opacity(0.03) }
+    /// Fill for small controls: segmented tracks, steppers, key caps.
+    static var controlFill: Color { Color(nsColor: .adaptive(light: 0x767680, dark: 0x767680, alpha: 1)).opacity(0.13) }
+
+    /// The page's hairline edge: dark on light, light on dark.
+    static var pageEdge: Color {
+        Color(nsColor: NSColor(name: nil) { $0.isDark ? NSColor.white.withAlphaComponent(0.07) : NSColor.black.withAlphaComponent(0.06) })
+    }
+
+    /// Behind a card that floats over the window (Settings, search).
+    static var scrim: Color {
+        Color(nsColor: NSColor(name: nil) { $0.isDark ? NSColor.black.withAlphaComponent(0.45) : NSColor.black.withAlphaComponent(0.16) })
+    }
+
+    /// The window's ground as painted. Glass: a light white veil over the
+    /// behind-window blur, so the desktop shows through it most.
+    static var groundFill: Color {
+        ThemeManager.shared.isGlass ? Palette.windowGround.opacity(0.12) : Palette.windowGround
+    }
+
+    /// The page sheet under the text. Glass: translucent white (graphite)
+    /// over the same blur — clearer than paper, still easy to read on.
+    static var pageSheet: Color {
+        ThemeManager.shared.isGlass ? Palette.editorBg.opacity(0.5) : Palette.editorBg
+    }
+
+    /// What views inside the page paint behind themselves: nothing in Glass,
+    /// where the page sheet alone carries the color, else the page color.
+    static var pageContentBg: Color {
+        ThemeManager.shared.isGlass ? Color.clear : Palette.editorBg
+    }
+
+    /// The soft lift under a selected sidebar row in the Glass theme, where
+    /// the selection is a raised white pill rather than a tint.
+    static var selectedRowShadow: Color {
+        ThemeManager.shared.isGlass ? Color.black.opacity(0.10) : Color.clear
+    }
 }
 
 extension Font {
@@ -109,10 +220,14 @@ extension Font {
 // MARK: - Hex colors
 
 extension Color {
-    static func fromHex(_ hex: String) -> Color {
+    static func hexValue(_ hex: String) -> UInt32? {
         var cleanHex = hex
         if cleanHex.hasPrefix("#") { cleanHex.removeFirst() }
-        guard let value = UInt32(cleanHex, radix: 16) else { return .gray }
+        return UInt32(cleanHex, radix: 16)
+    }
+
+    static func fromHex(_ hex: String) -> Color {
+        guard let value = hexValue(hex) else { return .gray }
         let r = Double((value >> 16) & 0xFF) / 255
         let g = Double((value >> 8) & 0xFF) / 255
         let b = Double(value & 0xFF) / 255

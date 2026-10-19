@@ -70,7 +70,7 @@ struct MemoTextEditor: NSViewRepresentable {
         view.textContainer?.widthTracksTextView = true
         view.isVerticallyResizable = true
         view.isHorizontallyResizable = false
-        view.insertionPointColor = NSColor(Color.accent)
+        view.insertionPointColor = ThemeManager.shared.accentNSColor
         view.delegate = context.coordinator
         view.onSubmit = onSubmit
         view.onCancel = onCancel
@@ -120,7 +120,7 @@ struct MemoTextEditor: NSViewRepresentable {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineSpacing = 6
             let attributes: [NSAttributedString.Key: Any] = [
-                .font: font, .foregroundColor: NSColor(Color.primaryText), .paragraphStyle: paragraph,
+                .font: font, .foregroundColor: NSColor.themed(\.text), .paragraphStyle: paragraph,
             ]
             view.placeholder = parent.placeholder
             view.placeholderFont = font
@@ -177,7 +177,7 @@ final class MemoNSTextView: NSTextView {
         super.draw(dirtyRect)
         guard string.isEmpty, !placeholder.isEmpty else { return }
         (placeholder as NSString).draw(at: textContainerOrigin, withAttributes: [
-            .font: placeholderFont, .foregroundColor: NSColor(Color.faintText),
+            .font: placeholderFont, .foregroundColor: NSColor.themed(\.faintText),
         ])
     }
 

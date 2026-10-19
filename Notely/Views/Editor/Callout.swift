@@ -30,22 +30,22 @@ enum CalloutKind {
     /// Title and icon color.
     var color: NSColor {
         switch self {
-        case .note:    return MarkdownPalette.hex(0x2A6FB8)
-        case .tip:     return MarkdownPalette.hex(0x448361)
-        case .info:    return MarkdownPalette.hex(0x55534E)
-        case .warning: return MarkdownPalette.hex(0x9A6B12)
-        case .danger:  return MarkdownPalette.hex(0xC4402F)
+        case .note:    return MarkdownPalette.adaptive(0x2A6FB8, 0x6FA8E6)
+        case .tip:     return MarkdownPalette.adaptive(0x448361, 0x6FB08A)
+        case .info:    return MarkdownPalette.adaptive(0x55534E, 0xC3C0B9)
+        case .warning: return MarkdownPalette.adaptive(0x9A6B12, 0xD1A04A)
+        case .danger:  return MarkdownPalette.adaptive(0xC4402F, 0xE5735F)
         }
     }
 
     /// Box fill.
     var background: NSColor {
         switch self {
-        case .note:    return MarkdownPalette.hex(0xE8F1FB)
-        case .tip:     return MarkdownPalette.hex(0xE7F5EC)
-        case .info:    return MarkdownPalette.hex(0xF1F1EF)
-        case .warning: return MarkdownPalette.hex(0xFBF3DB)
-        case .danger:  return MarkdownPalette.hex(0xFDECEE)
+        case .note:    return MarkdownPalette.adaptive(0xE8F1FB, 0x1E2A38)
+        case .tip:     return MarkdownPalette.adaptive(0xE7F5EC, 0x1E2E25)
+        case .info:    return MarkdownPalette.adaptive(0xF1F1EF, 0x2E2D2A)
+        case .warning: return MarkdownPalette.adaptive(0xFBF3DB, 0x3A3220)
+        case .danger:  return MarkdownPalette.adaptive(0xFDECEE, 0x3A2224)
         }
     }
 
