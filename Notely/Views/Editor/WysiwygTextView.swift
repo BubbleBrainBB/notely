@@ -46,6 +46,13 @@ extension Notification.Name {
 final class EditorScrollView: NSScrollView {
     override var acceptsFirstResponder: Bool { false }
 
+    /// Always the overlay scroller (QuietScroller), even when the system
+    /// would switch to the legacy, always-shown kind.
+    override var scrollerStyle: NSScroller.Style {
+        get { .overlay }
+        set { super.scrollerStyle = .overlay }
+    }
+
     /// Puts a note back where it was left (caret, scroll); returns false
     /// while the view is still too narrow to lay the text out. Run in the
     /// first layout pass that has the real width — before anything is drawn,
@@ -121,6 +128,7 @@ struct WysiwygEditor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = EditorScrollView()
+        scrollView.verticalScroller = QuietScroller(frame: .zero)
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true

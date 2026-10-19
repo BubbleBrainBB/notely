@@ -38,6 +38,7 @@
 		96BEB26FE3BE3C1BAB4F8F71 /* NotelyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F92311962A01A52B450F566 /* NotelyApp.swift */; };
 		97B9840F54C3F8B26A63CC08 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5693582B5792899EADACC22 /* Assets.xcassets */; };
 		9BD5B3FDBBAEF11946D028E3 /* ShiyeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */; };
+		7419F0000000000000000001 /* QuietScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7419F0000000000000000002 /* QuietScroller.swift */; };
 		9F8BF31EB0BC5680357930C5 /* ExternalSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8030200ECD3965B795047411 /* ExternalSync.swift */; };
 		B01F02B34597F599660C7FBB /* CodeBlockLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A16EF59DECE0BFDBD23DD4 /* CodeBlockLayoutManager.swift */; };
 		B3F55969806245A31F0F94E7 /* WysiwygTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F04AAD312B1139EC7FA8DC /* WysiwygTextView.swift */; };
@@ -107,6 +108,7 @@
 		CFB02B3CFC21C706194A9DB5 /* FrontmatterParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParser.swift; sourceTree = "<group>"; };
 		D47DC733AE9756A4A93F7A31 /* CompositeFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositeFont.swift; sourceTree = "<group>"; };
 		D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiyeIcon.swift; sourceTree = "<group>"; };
+		7419F0000000000000000002 /* QuietScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietScroller.swift; sourceTree = "<group>"; };
 		D918A428AAFA3CCB3448EFD9 /* LatexMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatexMath.swift; sourceTree = "<group>"; };
 		DCF1FEF34613D6755052666A /* FileNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNote.swift; sourceTree = "<group>"; };
 		E393329227C72C2C990CD4DF /* SearchPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchPopover.swift; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 			children = (
 				62A4085CE734D06BACDB912F /* ColorTokens.swift */,
 				D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */,
+				7419F0000000000000000002 /* QuietScroller.swift */,
 				FE8E0C89B63AFC7A7FC3DE27 /* ThemePalette.swift */,
 			);
 			path = Utils;
@@ -392,6 +395,7 @@
 				4699BE42784CA2058A721896 /* SearchPopover.swift in Sources */,
 				2577B1CBF8791056FAE47ECF /* SettingsView.swift in Sources */,
 				9BD5B3FDBBAEF11946D028E3 /* ShiyeIcon.swift in Sources */,
+				7419F0000000000000000001 /* QuietScroller.swift in Sources */,
 				07C3BF96370CFBC42EBF64C0 /* SidebarView.swift in Sources */,
 				6AC7EC19D22E8CD86E25E468 /* SidebarWidthPolicy.swift in Sources */,
 				746C69866F6F757204DBE7C0 /* TabStrip.swift in Sources */,

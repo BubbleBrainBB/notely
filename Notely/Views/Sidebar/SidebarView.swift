@@ -1115,33 +1115,14 @@ private struct SidebarScrollerConfigurator: NSViewRepresentable {
 
     private func configureScroller(from view: NSView) {
         guard let scrollView = view.enclosingScrollView,
-              !(scrollView.verticalScroller is SidebarScroller) else { return }
+              !(scrollView.verticalScroller is QuietScroller) else { return }
 
-        let scroller = SidebarScroller(frame: .zero)
+        let scroller = QuietScroller(frame: .zero)
+        scroller.shortensKnob = true
         scroller.scrollerStyle = .overlay
         scrollView.verticalScroller = scroller
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
-    }
-}
-
-private final class SidebarScroller: NSScroller {
-    override class var isCompatibleWithOverlayScrollers: Bool { true }
-    override class func scrollerWidth(for controlSize: NSControl.ControlSize, scrollerStyle: NSScroller.Style) -> CGFloat { 7 }
-
-    override func drawKnob() {
-        let slotRect = rect(for: .knobSlot)
-        let rawKnobRect = rect(for: .knob)
-        let height = max(34, rawKnobRect.height * 0.66)
-        let y = rawKnobRect.midY - height / 2
-        let knobRect = NSRect(x: slotRect.midX - 2, y: y, width: 4, height: height)
-
-        NSColor.labelColor.withAlphaComponent(0.16).setFill()
-        NSBezierPath(roundedRect: knobRect, xRadius: 2, yRadius: 2).fill()
-    }
-
-    override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {
-        // Keep the sidebar scrollbar quiet: no track, only the lightweight thumb.
     }
 }
