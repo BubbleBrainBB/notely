@@ -309,7 +309,7 @@ private struct PaperTab: View {
         } else {
             Text(BodyFace.text(title, fontName: editorFontName, size: 13, weight: .medium))
                 .italic(tab.content == .draft)
-                .foregroundColor(isActive ? .secondaryText : .tertiaryText)
+                .foregroundColor(titleColor)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.leading, 14)
@@ -318,10 +318,28 @@ private struct PaperTab: View {
         }
     }
 
+    /// In Glass the page and the strip are both pale and see-through, so the
+    /// active title takes the body ink to stand apart from the others.
+    private var titleColor: Color {
+        if isActive { return ThemeManager.shared.isGlass ? .primaryText : .secondaryText }
+        return .tertiaryText
+    }
+
     @ViewBuilder private var background: some View {
         if isActive {
-            PaperTabShape(flare: PaperTabShape.flare)
+            let shape = PaperTabShape(flare: PaperTabShape.flare)
+            shape
                 .fill(Color.pageSheet)
+                // A translucent tab on translucent glass needs an edge to read
+                // as a tab: the page's own hairline, carried up around it, and
+                // a little lift.
+                .overlay {
+                    if ThemeManager.shared.isGlass {
+                        PaperTabShape(flare: PaperTabShape.flare, closed: false)
+                            .stroke(Color.pageEdge, lineWidth: 1)
+                    }
+                }
+                .shadow(color: .black.opacity(ThemeManager.shared.isGlass ? 0.07 : 0), radius: 5, y: -1)
                 .frame(width: width + PaperTabShape.flare * 2, height: TabStrip.tabHeight)
         } else if isHovered {
             UnevenRoundedRectangle(topLeadingRadius: 10, topTrailingRadius: 10, style: .continuous)
@@ -336,6 +354,9 @@ struct PaperTabShape: Shape {
     static let flare: CGFloat = 10
     var flare: CGFloat
     var radius: CGFloat = 10
+    /// False leaves the bottom open: the outline of the tab without the
+    /// edge it shares with the page.
+    var closed = true
 
     func path(in rect: CGRect) -> Path {
         let w = rect.width, h = rect.height, f = flare, r = radius
@@ -352,7 +373,7 @@ struct PaperTabShape: Shape {
         p.addLine(to: CGPoint(x: w - f, y: h - f))
         p.addArc(center: CGPoint(x: w, y: h - f), radius: f,
                  startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
-        p.closeSubpath()
+        if closed { p.closeSubpath() }
         return p.offsetBy(dx: rect.minX, dy: rect.minY)
     }
 }
