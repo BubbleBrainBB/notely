@@ -46,6 +46,17 @@ extension Notification.Name {
 final class EditorScrollView: NSScrollView {
     override var acceptsFirstResponder: Bool { false }
 
+    /// Puts a note back where it was left (caret, scroll); returns false
+    /// while the view is still too narrow to lay the text out. Run in the
+    /// first layout pass that has the real width — before anything is drawn,
+    /// so a tab switched back to doesn't flash its top first.
+    var pendingRestore: (() -> Bool)?
+
+    override func layout() {
+        super.layout()
+        if let restore = pendingRestore, restore() { pendingRestore = nil }
+    }
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         return true
     }
@@ -89,6 +100,9 @@ struct WysiwygEditor: NSViewRepresentable {
     /// Where each note was left: caret, scroll offset, whether it had focus.
     struct Place {
         var selection: NSRange
+        /// The top of the visible text, from the top of the note: unlike the
+        /// clip view's origin it means the same once the note is laid out
+        /// again at another height.
         var scrollY: CGFloat
         var hadFocus: Bool
     }
@@ -150,18 +164,27 @@ struct WysiwygEditor: NSViewRepresentable {
         context.coordinator.textRevision = textRevision
         context.coordinator.placeKey = placeKey
         if let placeKey, let place = Self.places[placeKey] {
-            // After the first layout pass, once the text has its height.
-            DispatchQueue.main.async { [weak textView, weak scrollView] in
-                guard let textView, let scrollView else { return }
-                textView.fitFrameToContent()
+            scrollView.pendingRestore = { [weak textView, weak scrollView] in
+                guard let textView, let scrollView else { return true }
+                // The text view takes the clip view's width as the scroll view
+                // is laid out; until then the text can't be measured.
+                guard scrollView.contentSize.width > 50, textView.frame.width > 50 else { return false }
+                // Style at the real width first: the note was first styled at
+                // the minimum width, with images to match, and anything that
+                // restyles it later (taking focus does) would grow them and
+                // push the text down after the scroll was set.
+                textView.restyle()
                 let length = (textView.string as NSString).length
                 let location = min(place.selection.location, length)
                 textView.setSelectedRange(NSRange(location: location,
                                                   length: min(place.selection.length, length - location)))
-                let maxY = max(0, textView.frame.height - scrollView.contentSize.height)
-                scrollView.contentView.scroll(to: NSPoint(x: 0, y: min(place.scrollY, maxY)))
-                scrollView.reflectScrolledClipView(scrollView.contentView)
                 if place.hadFocus { textView.window?.makeFirstResponder(textView) }
+                // The scroll last, so nothing moves it again.
+                textView.fitFrameToContent()
+                let maxY = max(0, textView.frame.height - scrollView.contentSize.height)
+                textView.scroll(NSPoint(x: 0, y: min(place.scrollY, maxY)))
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                return true
             }
         }
         Diag.log("makeNSView: textView frame=\(textView.frame) isEditable=\(textView.isEditable)")
@@ -171,7 +194,7 @@ struct WysiwygEditor: NSViewRepresentable {
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
         guard let key = coordinator.placeKey, let textView = nsView.documentView as? NSTextView else { return }
         places[key] = Place(selection: textView.selectedRange(),
-                            scrollY: nsView.contentView.bounds.origin.y,
+                            scrollY: textView.visibleRect.minY,
                             hadFocus: textView.window?.firstResponder === textView)
     }
 
