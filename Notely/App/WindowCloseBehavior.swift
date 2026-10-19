@@ -41,6 +41,8 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
     /// for a stray restored window on its next update and closed, leaving the
     /// app with no window at all.
     private let attachedWindows = NSHashTable<NSWindow>.weakObjects()
+    /// Each window's app model, for ⌘W on a window with tabs.
+    private let appModels = NSMapTable<NSWindow, AppModel>.weakToWeakObjects()
     private var suppressEmptyWindowsUntil: Date?
     private var isDiscardingWindow = false
     /// The first window of a fresh launch becomes the primary: it restores the
@@ -51,7 +53,8 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
         suppressEmptyWindowsUntil = Date().addingTimeInterval(2)
     }
 
-    func attach(to window: NSWindow, store: FileNoteStore) {
+    func attach(to window: NSWindow, store: FileNoteStore, appModel: AppModel) {
+        appModels.setObject(appModel, forKey: window)
         guard !attachedWindows.contains(window) else { return }
         attachedWindows.add(window)
         window.delegate = self
@@ -90,6 +93,14 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if NotelyAppDelegate.isQuitting || isDiscardingWindow { return true }
+        // ⌘W closes the active tab (design board ㊴); on the window's only
+        // tab, and for the red button, the window closes as before.
+        if let event = NSApp.currentEvent, event.type == .keyDown,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "w",
+           appModels.object(forKey: sender)?.closeActiveTab() == true {
+            return false
+        }
         hiddenWindows.add(sender)
         sender.orderOut(nil)
         return false
@@ -127,21 +138,22 @@ private final class WindowCloseController: NSObject, NSWindowDelegate {
 
 struct WindowCloseBehavior: NSViewRepresentable {
     let store: FileNoteStore
+    let appModel: AppModel
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView(frame: .zero)
-        DispatchQueue.main.async { [weak view, store] in
+        DispatchQueue.main.async { [weak view, store, appModel] in
             if let window = view?.window {
-                WindowCloseController.shared.attach(to: window, store: store)
+                WindowCloseController.shared.attach(to: window, store: store, appModel: appModel)
             }
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { [weak nsView, store] in
+        DispatchQueue.main.async { [weak nsView, store, appModel] in
             if let window = nsView?.window {
-                WindowCloseController.shared.attach(to: window, store: store)
+                WindowCloseController.shared.attach(to: window, store: store, appModel: appModel)
             }
         }
     }

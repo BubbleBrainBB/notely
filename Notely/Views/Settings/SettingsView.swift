@@ -787,11 +787,18 @@ struct ShortcutsSettings: View {
             ("Toggle Sidebar", "⌥⌘S"),
             ("Settings", "⌘,"),
         ]),
+        ("Tabs", [
+            ("New Tab", "⌘T"),
+            ("Close Tab", "⌘W"),
+            ("Reopen Closed Tab", "⇧⌘T"),
+            ("Show Next Tab", "⌃⇥"),
+            ("Show Previous Tab", "⌃⇧⇥"),
+        ]),
         ("Formatting", [
             ("Bold", "⌘B"),
             ("Italic", "⌘I"),
             ("Insert Link", "⌘K"),
-            ("Toggle To-do", "⇧⌘T"),
+            ("Toggle To-do", "⌘L"),
         ]),
     ]
 

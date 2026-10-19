@@ -90,7 +90,7 @@ struct SidebarView: View {
             VStack(alignment: .leading, spacing: 1) {
                 SidebarSearchField()
                 SidebarRow(icon: .glyph(.memo), title: "Memos", isSelected: appModel.showMemos) {
-                    appModel.openMemos()
+                    appModel.openMemos(inNewTab: NSEvent.modifierFlags.contains(.command))
                 }
             }
             .padding(.leading, Self.leadingInset)
@@ -571,7 +571,8 @@ private struct NoteRow: View {
 
     var body: some View {
         Button {
-            appModel.openNote(note.id)
+            // ⌘-click opens it in a new tab (design board ㊴).
+            appModel.openNote(note.id, inNewTab: NSEvent.modifierFlags.contains(.command))
         } label: {
             HStack(spacing: NoteTreeIndent.iconGap) {
                 ShiyeIcon(.note, size: 15)
@@ -607,6 +608,8 @@ private struct NoteRow: View {
         // Dropped on a note: into the note's folder, as in Finder's list view.
         .treeDropTarget(note.relativePath)
         .contextMenu {
+            Button("Open in New Tab") { appModel.openNote(note.id, inNewTab: true) }
+            Divider()
             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
             Button("Rename…") {
                 renameText = note.filename
@@ -616,7 +619,7 @@ private struct NoteRow: View {
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
             Divider()
             Button("Delete", role: .destructive) {
-                if appModel.selectedNoteId == note.id { appModel.selectedNoteId = nil }
+                appModel.removeTabs(showing: .note(note.id))
                 store.deleteNote(note.id)
             }
         }
@@ -630,9 +633,8 @@ private struct NoteRow: View {
     }
 
     private func performRename() {
-        let wasSelected = appModel.selectedNoteId == note.id
-        if let newId = store.renameNote(note.id, to: renameText), wasSelected {
-            appModel.selectedNoteId = newId
+        if let newId = store.renameNote(note.id, to: renameText) {
+            appModel.remapTabs(from: note.id, to: newId)
         }
     }
 }
@@ -661,7 +663,7 @@ private struct FileRow: View {
 
     var body: some View {
         Button {
-            appModel.openFile(file.id)
+            appModel.openFile(file.id, inNewTab: NSEvent.modifierFlags.contains(.command))
         } label: {
             HStack(spacing: NoteTreeIndent.iconGap) {
                 ShiyeIcon(glyph, size: 15)
@@ -691,6 +693,8 @@ private struct FileRow: View {
         }
         .treeDropTarget(file.relativePath)
         .contextMenu {
+            Button("Open in New Tab") { appModel.openFile(file.id, inNewTab: true) }
+            Divider()
             Button("Copy Markdown Link") {
                 guard let library = store.workspaceURL else { return }
                 let path = AttachmentImport.relativePath(from: library, to: file.url)
@@ -703,7 +707,7 @@ private struct FileRow: View {
             Divider()
             Button("Move to Trash", role: .destructive) {
                 if (try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)) != nil {
-                    if appModel.selectedFileId == file.id { appModel.selectedFileId = nil }
+                    appModel.removeTabs(showing: .file(file.id))
                     store.reloadNotes()
                 }
             }

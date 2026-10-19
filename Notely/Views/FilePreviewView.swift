@@ -25,7 +25,7 @@ struct FilePreviewView: View {
 
                 FlatToolbarItem {
                     Button {
-                        appModel.openNote(store.createNote()?.id)
+                        appModel.newTab()
                     } label: {
                         Label {
                             Text("New Note")
@@ -83,7 +83,7 @@ struct FilePreviewView: View {
     private func moveToTrash() {
         do {
             try FileManager.default.trashItem(at: file.url, resultingItemURL: nil)
-            appModel.selectedFileId = nil
+            appModel.removeTabs(showing: .file(file.id))
             store.reloadNotes()
         } catch {
             NSSound.beep()

@@ -70,6 +70,12 @@ struct AppShellView: View {
                             // Opened from the welcome page, the page starts as the
                             // whole white window and settles into its frame.
                             .padding([.leading, .trailing, .bottom], framed ? Self.pageInset : 0)
+                            // The tab strip spans the page, less the toolbar's
+                            // trailing icons — and the traffic lights and the
+                            // sidebar toggle when the sidebar is hidden.
+                            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                                appModel.pageWidth = width
+                            }
                             .background(appModel.groundColor)
                             .toolbarBackground(.hidden, for: .windowToolbar)
                         .navigationSplitViewColumnWidth(min: detailMinWidth, ideal: detailMinWidth, max: .infinity)
@@ -118,6 +124,58 @@ struct AppShellView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: store.isOpen)
+        .background { TabShortcuts() }
+        // Each library keeps its own tabs between launches (board ㊴).
+        .onChange(of: store.workspaceURL, initial: true) { _, url in
+            if let url { appModel.restoreTabs(workspace: url.path) }
+        }
+        .onChange(of: appModel.tabs) { saveTabs() }
+        .onChange(of: appModel.activeTabId) { saveTabs() }
+        // A note or file gone from the library takes its tabs with it.
+        .onChange(of: store.notes.map(\.id)) { pruneTabs() }
+        .onChange(of: store.files.map(\.id)) { pruneTabs() }
+        .onChange(of: store.hasLoadedNotes) { pruneTabs() }
+    }
+
+    private func saveTabs() {
+        guard let path = store.workspaceURL?.path else { return }
+        appModel.saveTabs(workspace: path)
+    }
+
+    private func pruneTabs() {
+        guard store.hasLoadedNotes else { return }
+        let notes = Set(store.notes.map(\.id))
+        let files = Set(store.files.map(\.id))
+        appModel.pruneTabs { content in
+            switch content {
+            case .note(let id): notes.contains(id)
+            case .file(let id): files.contains(id)
+            case .draft, .memos: true
+            }
+        }
+    }
+}
+
+/// Tab shortcuts that have no menu item of their own: ⌘1…⌘9 and ⇧⌘] / ⇧⌘[
+/// (the menu has ⌃Tab / ⌃⇧Tab for next and previous).
+private struct TabShortcuts: View {
+    @Environment(AppModel.self) private var appModel
+
+    var body: some View {
+        ZStack {
+            ForEach(1...9, id: \.self) { number in
+                Button("") { appModel.selectTab(number: number) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(number)")), modifiers: .command)
+            }
+            Button("") { appModel.selectTab(offset: 1) }
+                .keyboardShortcut("]", modifiers: [.command, .shift])
+            Button("") { appModel.selectTab(offset: -1) }
+                .keyboardShortcut("[", modifiers: [.command, .shift])
+        }
+        .buttonStyle(.plain)
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
     }
 }
 

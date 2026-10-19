@@ -112,12 +112,8 @@ final class NoteTreeState {
     }
 
     private func follow(from old: URL, to new: URL, store: FileNoteStore, appModel: AppModel) {
-        if let id = appModel.selectedNoteId, let moved = LibraryMove.remap(id, from: old.path, to: new.path) {
-            appModel.selectedNoteId = moved
-        }
-        if let id = appModel.selectedFileId, let moved = LibraryMove.remap(id, from: old.path, to: new.path) {
-            appModel.selectedFileId = moved
-        }
+        // Every tab showing something inside it follows, open or not.
+        appModel.remapTabs(from: old.path, to: new.path)
         // A moved folder stays open, and so do the folders inside it.
         if let library = store.workspaceURL,
            let oldId = LibraryMove.folderId(of: old, in: library),

@@ -130,7 +130,7 @@ struct SearchPopover: View {
                                 hit: hits[index],
                                 isSelected: index == activeIndex
                             ) {
-                                appModel.openNote(hits[index].note.id)
+                                appModel.openNote(hits[index].note.id, inNewTab: NSEvent.modifierFlags.contains(.command))
                             } onHover: { hovering in
                                 hoverIndex = hovering ? index : nil
                             }
@@ -201,7 +201,8 @@ struct SearchPopover: View {
             searchResult = (trimmedQuery, FuzzySearch.hits(in: corpus, query: trimmedQuery))
         }
         guard hits.indices.contains(activeIndex) else { return }
-        appModel.openNote(hits[activeIndex].note.id)
+        // ⌘⏎ opens it in a new tab.
+        appModel.openNote(hits[activeIndex].note.id, inNewTab: NSEvent.modifierFlags.contains(.command))
     }
 }
 

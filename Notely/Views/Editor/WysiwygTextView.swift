@@ -80,7 +80,19 @@ struct WysiwygEditor: NSViewRepresentable {
     var draftPlaceholder: WysiwygTextView.DraftPlaceholder? = nil
     /// Take keyboard focus, caret at the end, once the editor is on screen.
     var focusesOnAppear = false
+    /// The note shown, so its caret and scroll position are put back when
+    /// it is opened again — switching tabs away and back (board ㊴). Nil
+    /// for a draft.
+    var placeKey: String? = nil
     let onTextChange: (String) -> Void
+
+    /// Where each note was left: caret, scroll offset, whether it had focus.
+    struct Place {
+        var selection: NSRange
+        var scrollY: CGFloat
+        var hadFocus: Bool
+    }
+    @MainActor static var places: [String: Place] = [:]
 
     /// Settings › Editor. Set only on change: assigning restarts the checker.
     static func applyTypingOptions(_ textView: NSTextView, spellCheck: Bool, smartPunctuation: Bool) {
@@ -136,8 +148,31 @@ struct WysiwygEditor: NSViewRepresentable {
         context.coordinator.textView = textView
         context.coordinator.lastKnownText = initialText
         context.coordinator.textRevision = textRevision
+        context.coordinator.placeKey = placeKey
+        if let placeKey, let place = Self.places[placeKey] {
+            // After the first layout pass, once the text has its height.
+            DispatchQueue.main.async { [weak textView, weak scrollView] in
+                guard let textView, let scrollView else { return }
+                textView.fitFrameToContent()
+                let length = (textView.string as NSString).length
+                let location = min(place.selection.location, length)
+                textView.setSelectedRange(NSRange(location: location,
+                                                  length: min(place.selection.length, length - location)))
+                let maxY = max(0, textView.frame.height - scrollView.contentSize.height)
+                scrollView.contentView.scroll(to: NSPoint(x: 0, y: min(place.scrollY, maxY)))
+                scrollView.reflectScrolledClipView(scrollView.contentView)
+                if place.hadFocus { textView.window?.makeFirstResponder(textView) }
+            }
+        }
         Diag.log("makeNSView: textView frame=\(textView.frame) isEditable=\(textView.isEditable)")
         return scrollView
+    }
+
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        guard let key = coordinator.placeKey, let textView = nsView.documentView as? NSTextView else { return }
+        places[key] = Place(selection: textView.selectedRange(),
+                            scrollY: nsView.contentView.bounds.origin.y,
+                            hadFocus: textView.window?.firstResponder === textView)
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
@@ -210,6 +245,7 @@ struct WysiwygEditor: NSViewRepresentable {
         var lastKnownText: String = ""
         /// The parent's `textRevision` last seen.
         var textRevision = 0
+        var placeKey: String?
 
         init(onTextChange: @escaping (String) -> Void) {
             self.onTextChange = onTextChange

@@ -96,6 +96,7 @@ struct EditorView: View {
                         ? .init(title: "Title", hint: "Start typing — the note is saved once you write something.")
                         : nil,
                     focusesOnAppear: isDraft,
+                    placeKey: isDraft ? nil : note.id,
                     onTextChange: handleTextChange
                 )
                 .frame(maxWidth: .infinity)
@@ -168,13 +169,16 @@ struct EditorView: View {
         // so a debounced write can never be redirected to a note switched-to
         // during the 500ms window.
         let targetId = note.id
+        // Only the active tab has an editor, so this is the tab being typed in.
+        let tabId = appModel.activeTabId
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            // A draft's first save puts it in the library: select it there.
-            if store.saveContent(content, to: targetId), appModel.selectedNoteId == nil {
-                appModel.selectedNoteId = targetId
+            // A draft's first save puts it in the library: its tab now shows
+            // that note, and the sidebar selects it.
+            if store.saveContent(content, to: targetId) {
+                appModel.adoptDraft(targetId, inTab: tabId)
             }
         }
     }
@@ -224,9 +228,10 @@ struct NoteToolbar: ViewModifier {
                 // Flat 拾页 glyphs, each its own item with the shared glass
                 // capsule turned off — the same treatment as the sidebar
                 // toggle, so the page's corner holds plain icons, not a pill.
+                // The same icons with one page or several.
                 FlatToolbarItem {
                     Button {
-                        appModel.openNote(store.createNote()?.id)
+                        appModel.newTab()
                     } label: {
                         Label {
                             Text("New Note")
@@ -260,7 +265,7 @@ struct NoteToolbar: ViewModifier {
                             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
                             Divider()
                             Button("Delete", role: .destructive) {
-                                appModel.selectedNoteId = nil
+                                appModel.removeTabs(showing: .note(note.id))
                                 store.deleteNote(note.id)
                             }
                         } label: {
@@ -312,46 +317,10 @@ struct FlatToolbarItem<Content: View>: ToolbarContent {
     }
 }
 
-/// The note's file name over the page (design board ㉙ B + H3): set in the
-/// editor's own body face — New York with 宋体 by default, through the same
-/// composite pairing as the text — at medium weight in secondary gray, so it
-/// reads as the page's running head rather than outshouting it. The edit
-/// date stays small sans in faint gray. The window keeps its plain title
-/// for the Window menu; only the toolbar shows this one. Needs macOS 26 for
-/// the flexible spacer that keeps the icons at the trailing edge once the
-/// system title is gone; older systems keep the system title.
-struct NoteTitleHeader: ToolbarContent {
-    let title: String
-    let subtitle: String
-    @AppStorage("notely.editorFont") private var editorFontName: String = "System"
-
-    var body: some ToolbarContent {
-        if #available(macOS 26, *) {
-            FlatToolbarItem(placement: .navigation, glassInGlassTheme: false) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(Self.styledTitle(title, fontName: editorFontName))
-                        .foregroundColor(.secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    if !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.notely(11))
-                            .foregroundColor(.faintText)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: 560, alignment: .leading)
-                .padding(.leading, 6)
-            }
-            ToolbarSpacer(.flexible)
-        }
-    }
-
-    /// `title` in the body family at 13.5pt medium.
-    static func styledTitle(_ title: String, fontName: String) -> AttributedString {
-        BodyFace.text(title, fontName: fontName, size: 13.5, weight: .medium)
-    }
-}
+/// The note's file name over the page (design board ㉙ B + H3) is
+/// `NoteTitleHeader`, in TabStrip.swift: set in the editor's own body face
+/// at medium weight in secondary gray, so it reads as the page's running
+/// head; with more than one tab open the tab strip takes its place.
 
 /// Text set in a body face — the editor's, New York with 宋体 by default —
 /// with Han runs re-set in the paired CJK face exactly as the editor does,

@@ -65,6 +65,8 @@ struct MemosView: View {
         .background(Color.pageContentBg)
         .navigationTitle("Memos")
         .navigationSubtitle("")
+        // No title header of its own; the tab strip when there are tabs.
+        .modifier(MemosTabStrip())
     }
 
     @ViewBuilder private var filterChips: some View {
@@ -439,5 +441,21 @@ private struct MemoRow: View {
         }
         MemoTypography.styleRuns(&result, size: size)
         return result
+    }
+}
+
+/// Memos keeps the system title alone; with more than one tab open the
+/// toolbar shows the tab strip instead, as over notes.
+private struct MemosTabStrip: ViewModifier {
+    @Environment(AppModel.self) private var appModel
+
+    func body(content: Content) -> some View {
+        if appModel.showsTabStrip {
+            content
+                .modifier(RemovesSystemTitle())
+                .toolbar { NoteTitleHeader() }
+        } else {
+            content
+        }
     }
 }

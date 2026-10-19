@@ -39,7 +39,7 @@ struct WindowRoot: View {
 
     var body: some View {
         AppShellView()
-            .background(WindowCloseBehavior(store: store).frame(width: 0, height: 0))
+            .background(WindowCloseBehavior(store: store, appModel: appModel).frame(width: 0, height: 0))
             .environment(store)
             .environment(appModel)
             .environment(settingsTabState)
@@ -84,11 +84,12 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("New Note") {
-                guard let store, let appModel else { return }
-                appModel.openNote(store.createNote()?.id)
-            }
-            .keyboardShortcut("n", modifiers: .command)
+            // New Note and New Tab are one thing: a blank draft in a new
+            // tab, written to the library once something is typed (㉝ E, ㊴).
+            Button("New Note") { appModel?.newTab() }
+                .keyboardShortcut("n", modifiers: .command)
+            Button("New Tab") { appModel?.newTab() }
+                .keyboardShortcut("t", modifiers: .command)
 
             // The quick memo panel; ⌃⌥N opens it from anywhere (QuickCapture).
             Button("New Memo") { QuickCapture.shared.show() }
@@ -102,6 +103,38 @@ struct AppCommands: Commands {
                 openFolderInFocusedWindow()
             }
             .keyboardShortcut("o", modifiers: .command)
+
+            Divider()
+
+            // ⌘W closes the tab, or the window on its last one:
+            // WindowCloseController.
+            Button("Reopen Closed Tab") {
+                guard let store, let appModel else { return }
+                appModel.reopenClosedTab { content in
+                    switch content {
+                    case .note(let id): store.notes.contains { $0.id == id }
+                    case .file(let id): store.files.contains { $0.id == id }
+                    case .draft, .memos: true
+                    }
+                }
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(appModel?.canReopenClosedTab != true)
+        }
+
+        CommandGroup(after: .windowArrangement) {
+            Divider()
+            Button("Show Next Tab") { appModel?.selectTab(offset: 1) }
+                .keyboardShortcut(.tab, modifiers: .control)
+                .disabled(appModel?.showsTabStrip != true)
+            Button("Show Previous Tab") { appModel?.selectTab(offset: -1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                .disabled(appModel?.showsTabStrip != true)
+            Button(appModel?.activeTab.isPinned == true ? "Unpin Tab" : "Pin Tab") {
+                guard let appModel else { return }
+                appModel.togglePin(appModel.activeTabId)
+            }
+            .disabled(appModel?.showsTabStrip != true)
         }
 
         CommandGroup(after: .importExport) {
@@ -139,8 +172,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut("i", modifiers: .command)
             Button("Insert Link") { NSApp.sendAction(#selector(WysiwygTextView.insertLink), to: nil, from: nil) }
                 .keyboardShortcut("k", modifiers: .command)
+            // ⌘L, as in Obsidian: ⇧⌘T reopens a closed tab.
             Button("Toggle Todo") { NSApp.sendAction(#selector(WysiwygTextView.toggleTodoOnCurrentLine), to: nil, from: nil) }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .keyboardShortcut("l", modifiers: .command)
         }
     }
 

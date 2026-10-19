@@ -16,6 +16,7 @@
 		205914B21783161A3319C21D /* NoteTreeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFF80F0A501C42C6363C311D /* NoteTreeState.swift */; };
 		2577B1CBF8791056FAE47ECF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B580DFD3B4507EAAC4C0DB97 /* SettingsView.swift */; };
 		2E83391C9DA508FD453E1906 /* ThemePalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8E0C89B63AFC7A7FC3DE27 /* ThemePalette.swift */; };
+		32628CC8FB36EA9CFCE7D662 /* NoteTabs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23C6899CB9959842A85E0BAE /* NoteTabs.swift */; };
 		333111173DC8DD349E4C037F /* FrontmatterAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA6F511541193EB58C2C2BB /* FrontmatterAttachment.swift */; };
 		33D9DA3D8962040517AE5746 /* FolderOpenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC832FB4A06344B92E957336 /* FolderOpenView.swift */; };
 		3D35EC8F5BBB43A3AC053312 /* InlineLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACD2F5A00559F187AD36321 /* InlineLink.swift */; };
@@ -28,6 +29,7 @@
 		6AC7EC19D22E8CD86E25E468 /* SidebarWidthPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2495FCAE3556EDC081870262 /* SidebarWidthPolicy.swift */; };
 		6C33E266DBC8945596F799B7 /* OutlineSectionPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E05CB6F22B4D042DD09D45 /* OutlineSectionPreview.swift */; };
 		73E9A7FD99DEA3EC14C4B6A8 /* TagExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CA4E783C0848DB5608663A /* TagExtractor.swift */; };
+		746C69866F6F757204DBE7C0 /* TabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBBF2CF736AF24D04E69309 /* TabStrip.swift */; };
 		76A92C439DECF23CAC694D84 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6F0797BF320978F6417590 /* AppShellView.swift */; };
 		787B3F9A8DF011D63818DD13 /* VideoAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA0BAAC4ED8F5F19B3B740C /* VideoAttachment.swift */; };
 		7BD8566622A1BE1171488C6B /* FrontmatterParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB02B3CFC21C706194A9DB5 /* FrontmatterParser.swift */; };
@@ -65,6 +67,7 @@
 		051335655F5AEF97F593867C /* NoteModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteModel.swift; sourceTree = "<group>"; };
 		10560BD4D433AA5E2E0963E9 /* MemosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemosView.swift; sourceTree = "<group>"; };
 		12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WysiwygEngine.swift; sourceTree = "<group>"; };
+		23C6899CB9959842A85E0BAE /* NoteTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTabs.swift; sourceTree = "<group>"; };
 		2495FCAE3556EDC081870262 /* SidebarWidthPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarWidthPolicy.swift; sourceTree = "<group>"; };
 		2C906C229161A5930570BE5D /* Callout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Callout.swift; sourceTree = "<group>"; };
 		333BF991B70DE6848632A323 /* LibraryMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMove.swift; sourceTree = "<group>"; };
@@ -84,6 +87,7 @@
 		68CA4E783C0848DB5608663A /* TagExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagExtractor.swift; sourceTree = "<group>"; };
 		69E05CB6F22B4D042DD09D45 /* OutlineSectionPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineSectionPreview.swift; sourceTree = "<group>"; };
 		71147678FE2A21B62801107B /* MemoText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoText.swift; sourceTree = "<group>"; };
+		7CBBF2CF736AF24D04E69309 /* TabStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabStrip.swift; sourceTree = "<group>"; };
 		8030200ECD3965B795047411 /* ExternalSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSync.swift; sourceTree = "<group>"; };
 		862F15E8D1FA0A7E757E7F92 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
 		8E1635F8EC09DAC796A3A7B3 /* DataController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataController.swift; sourceTree = "<group>"; };
@@ -123,6 +127,14 @@
 				41504AFB5496F8D42652D3DE /* Notely.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		1FA2A6912DA9F6B38625723C /* Tabs */ = {
+			isa = PBXGroup;
+			children = (
+				7CBBF2CF736AF24D04E69309 /* TabStrip.swift */,
+			);
+			path = Tabs;
 			sourceTree = "<group>";
 		};
 		286A30EB1EA0C9B09862F6FE /* Notely */ = {
@@ -184,6 +196,7 @@
 				EE75D47D3AD44986921427A0 /* NoteList */,
 				C33BE59A04C02E376255BCA1 /* Settings */,
 				C78231787FEC1F68D648EBCB /* Sidebar */,
+				1FA2A6912DA9F6B38625723C /* Tabs */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -194,6 +207,7 @@
 				FC13FB98F064F67AB2187636 /* AppModel.swift */,
 				ED6F0797BF320978F6417590 /* AppShellView.swift */,
 				8E1635F8EC09DAC796A3A7B3 /* DataController.swift */,
+				23C6899CB9959842A85E0BAE /* NoteTabs.swift */,
 				B3C59A90729E2983F706552A /* QuickCapture.swift */,
 				FC5ED0A570180C8D5FC1828D /* WindowCloseBehavior.swift */,
 			);
@@ -368,6 +382,7 @@
 				D33A8A647BFA55437EB1DF06 /* MemosView.swift in Sources */,
 				12B288725023FC31275097E7 /* NoteCardSummary.swift in Sources */,
 				B6E59F1EB3D9260C1375C59C /* NoteModel.swift in Sources */,
+				32628CC8FB36EA9CFCE7D662 /* NoteTabs.swift in Sources */,
 				DD4BC0573F31BEF844E3B823 /* NoteTree.swift in Sources */,
 				205914B21783161A3319C21D /* NoteTreeState.swift in Sources */,
 				96BEB26FE3BE3C1BAB4F8F71 /* NotelyApp.swift in Sources */,
@@ -379,6 +394,7 @@
 				9BD5B3FDBBAEF11946D028E3 /* ShiyeIcon.swift in Sources */,
 				07C3BF96370CFBC42EBF64C0 /* SidebarView.swift in Sources */,
 				6AC7EC19D22E8CD86E25E468 /* SidebarWidthPolicy.swift in Sources */,
+				746C69866F6F757204DBE7C0 /* TabStrip.swift in Sources */,
 				73E9A7FD99DEA3EC14C4B6A8 /* TagExtractor.swift in Sources */,
 				FF1561D3A5311E63D449EB81 /* TagSearch.swift in Sources */,
 				2E83391C9DA508FD453E1906 /* ThemePalette.swift in Sources */,
