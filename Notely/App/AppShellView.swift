@@ -94,9 +94,9 @@ struct AppShellView: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                     }
 
-                    // Settings: a card over the dimmed window (design board ㉑ B).
+                    // Settings: a sheet of paper over the dimmed window (design board ㊶).
                     if appModel.showSettings {
-                        // Lighter behind Glass, so the note reads through the card.
+                        // Lighter behind Glass, so the note reads through the sheet.
                         Color.scrim.opacity(ThemeManager.shared.isGlass ? 0.45 : 1)
                             .ignoresSafeArea()
                             .onTapGesture { appModel.showSettings = false }

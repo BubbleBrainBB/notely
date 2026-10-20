@@ -2,158 +2,92 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
-// Settings as a card over the main window (design board ㊳, refining ㉑ B):
-// left the four categories, right the selected page. In the Glass theme the
-// card is white Liquid Glass over the dimmed window; in the others it is
-// solid, the categories on the window's ground and the page on paper. Every
-// row changes something real — Export lives in the File menu and About in
-// the app menu.
+// Settings as one sheet of paper over the dimmed window (design board ㊶,
+// direction ㊵ A): read top to bottom — Look, Writing, Library — with the
+// group names in an italic margin and the choices as plain words, the
+// chosen one underlined in the accent. No cards, pills or switches. The
+// keyboard shortcuts are the same sheet slid over. Every row changes
+// something real — Export lives in the File menu and About in the app menu.
 
 // MARK: - Shared state
 
 @Observable
 final class SettingsTabState {
-    var selectedTab: SettingsTab = .general
+    var page: SettingsPage = .settings
 }
 
-enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, appearance, editor, shortcuts
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .general: return "General"
-        case .appearance: return "Appearance"
-        case .editor: return "Editor"
-        case .shortcuts: return "Shortcuts"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .general: return "gearshape"
-        case .appearance: return "circle.lefthalf.filled"
-        case .editor: return "character.cursor.ibeam"
-        case .shortcuts: return "command"
-        }
-    }
+enum SettingsPage {
+    case settings, shortcuts
 }
 
 // MARK: - Modal
 
-/// The settings card. Shown by AppShellView over a dimmed window; esc or a
-/// click outside closes it.
+/// The settings sheet. Shown by AppShellView over a dimmed window; esc, ⌘.
+/// or a click outside closes it.
 struct SettingsModal: View {
     @Environment(SettingsTabState.self) private var state
     @Environment(AppModel.self) private var appModel
     @Environment(ThemeManager.self) private var themeManager
     @Environment(\.colorScheme) private var colorScheme
 
-    static let size = CGSize(width: 720, height: 520)
-    static let radius: CGFloat = 24
+    static let width: CGFloat = 600
+    static let radius: CGFloat = 14
 
-    private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-    }
-
-    private var isGlass: Bool { themeManager.isGlass }
     private var isDark: Bool { colorScheme == .dark }
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: Self.radius, style: .continuous) }
 
     var body: some View {
-        HStack(spacing: 0) {
-            navigation
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(state.selectedTab.title)
-                        .font(.notely(15, weight: .semibold))
-                        .foregroundColor(.primaryText)
-                    Spacer()
-                    SettingsCloseButton { appModel.showSettings = false }
-                }
-                .frame(height: 60)
-                .padding(.leading, 24)
-                .padding(.trailing, 18)
-                ScrollView {
-                    page
-                        .padding(.leading, 24)
-                        .padding(.trailing, 22)
-                        .padding(.bottom, 22)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .scrollContentBackground(.hidden)
-                .scrollIndicators(.never)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        GeometryReader { proxy in
+            // As tall as its content, never closer than 40 to the window's
+            // edges; past that the sheet scrolls inside.
+            sheet(maxHeight: max(260, proxy.size.height - 80))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: Self.size.width, height: Self.size.height)
-        .modifier(SettingsCardSurface(isGlass: isGlass, isDark: isDark, shape: shape))
-        // The whole card takes clicks: a click on an empty spot of the glass
-        // must not fall through to the dimmed window and close it.
+        .onAppear { state.page = .settings }
+    }
+
+    private func sheet(maxHeight: CGFloat) -> some View {
+        ZStack(alignment: .top) {
+            switch state.page {
+            case .settings:
+                SettingsPageView(maxHeight: maxHeight, close: close) { show(.shortcuts) }
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            case .shortcuts:
+                ShortcutsPageView(maxHeight: maxHeight) { show(.settings) }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .frame(width: Self.width)
+        .modifier(SettingsSheetSurface(isGlass: themeManager.isGlass, isDark: isDark, shape: shape))
+        // The whole sheet takes clicks: a click on an empty spot must not
+        // fall through to the dimmed window and close it.
         .contentShape(shape)
-        .shadow(color: .black.opacity(isDark ? 0.5 : 0.2), radius: 40, y: 18)
-        .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
-        .background(
-            // esc closes the card whichever control has focus.
-            Button("Close Settings") { appModel.showSettings = false }
-                .keyboardShortcut(.cancelAction)
-                .opacity(0)
-        )
-    }
-
-    private var navigation: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsTab.allCases) { tab in
-                SettingsNavItem(tab: tab, isSelected: state.selectedTab == tab) {
-                    state.selectedTab = tab
-                }
+        .shadow(color: .black.opacity(isDark ? 0.45 : 0.16), radius: 40, y: 30)
+        .background {
+            // esc and ⌘. close the sheet whichever control has focus.
+            ZStack {
+                Button("Close Settings", action: close).keyboardShortcut(.cancelAction)
+                Button("Close Settings", action: close).keyboardShortcut(".", modifiers: .command)
             }
-            Spacer(minLength: 0)
-            Text("Notely \(version)")
-                .font(.notely(11.5))
-                .foregroundColor(.tertiaryText)
-                .padding(.horizontal, 10)
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, isGlass ? 12 : 20)
-        .padding(.bottom, 12)
-        .frame(width: isGlass ? 196 : 206, alignment: .leading)
-        .frame(maxHeight: .infinity)
-        .background { navBackground }
-        .padding([.leading, .vertical], isGlass ? 10 : 0)
-    }
-
-    /// Glass: a smaller pane of glass set into the card, like System
-    /// Settings' sidebar. Otherwise the window's ground.
-    @ViewBuilder private var navBackground: some View {
-        if isGlass {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.windowGround.opacity(isDark ? 0.2 : 0.3))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(isDark ? Color.white.opacity(0.08) : Color.white, lineWidth: 0.5)
-                )
-        } else {
-            Color.windowGround
+            .opacity(0)
+            .accessibilityHidden(true)
         }
     }
 
-    @ViewBuilder private var page: some View {
-        switch state.selectedTab {
-        case .general: GeneralSettings()
-        case .appearance: AppearanceSettings()
-        case .editor: EditorSettings()
-        case .shortcuts: ShortcutsSettings()
-        }
+    private func show(_ page: SettingsPage) {
+        withAnimation(.easeInOut(duration: 0.24)) { state.page = page }
+    }
+
+    private func close() {
+        appModel.showSettings = false
     }
 }
 
-/// The card's surface. Glass: native Liquid Glass (macOS 26), clear enough
-/// that the note behind shows through, with a whisper of white (or
-/// graphite) so the labels stay readable; older systems frost the window's
-/// own content instead. Other themes: solid paper.
-private struct SettingsCardSurface<S: Shape>: ViewModifier {
+/// The sheet's paper. Glass: frosted white (graphite) Liquid Glass — the
+/// window behind shows through, the text still sits on white — with a
+/// white highlight edge; older systems frost the window's own content.
+/// Other themes: the theme's page color with a faint edge.
+private struct SettingsSheetSurface<S: InsettableShape>: ViewModifier {
     let isGlass: Bool
     let isDark: Bool
     let shape: S
@@ -162,31 +96,32 @@ private struct SettingsCardSurface<S: Shape>: ViewModifier {
         if isGlass {
             if #available(macOS 26, *) {
                 content
-                    .background(Color.editorBg.opacity(isDark ? 0.22 : 0.3))
+                    .background(Color.editorBg.opacity(isDark ? 0.45 : 0.6))
                     .clipShape(shape)
                     .glassEffect(.regular, in: shape)
+                    .overlay(shape.strokeBorder(Color.white.opacity(isDark ? 0.12 : 0.75), lineWidth: 1))
             } else {
                 content
                     .background {
                         ZStack {
                             WithinWindowBlur()
-                            Color.editorBg.opacity(isDark ? 0.4 : 0.45)
+                            Color.editorBg.opacity(isDark ? 0.55 : 0.7)
                         }
                     }
                     .clipShape(shape)
-                    .overlay(shape.stroke(isDark ? Color.white.opacity(0.14) : Color.white.opacity(0.9), lineWidth: 1))
+                    .overlay(shape.strokeBorder(Color.white.opacity(isDark ? 0.14 : 0.9), lineWidth: 1))
             }
         } else {
             content
                 .background(Color.editorBg)
                 .clipShape(shape)
-                .overlay(shape.stroke(isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.10), lineWidth: 0.5))
+                .overlay(shape.strokeBorder(isDark ? Color.white.opacity(0.07) : Color.black.opacity(0.05), lineWidth: 1))
         }
     }
 }
 
-/// Frosts what the window itself shows behind the card — never the desktop,
-/// so no wallpaper color reaches the glass (it stays white or graphite).
+/// Frosts what the window itself shows behind the sheet — never the
+/// desktop, so no wallpaper color reaches the glass.
 private struct WithinWindowBlur: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
@@ -199,19 +134,351 @@ private struct WithinWindowBlur: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
-/// × at the card's top-right corner; esc and a click outside also close.
-private struct SettingsCloseButton: View {
+// MARK: - Pages
+
+/// A page of the sheet: a fixed header, then the content — at its own
+/// height when it fits, otherwise in a scroll view whose bottom edge fades
+/// to say there is more, with the editor's slim scroller.
+private struct SheetPage<Header: View, Content: View>: View {
+    let maxHeight: CGFloat
+    var topPadding: CGFloat = 34
+    @ViewBuilder let header: () -> Header
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HeightCap(maxHeight: maxHeight) {
+            VStack(spacing: 0) {
+                header()
+                    .padding(.top, topPadding)
+                    .padding(.horizontal, 44)
+                ViewThatFits(in: .vertical) {
+                    paddedContent
+                    ScrollView(.vertical) {
+                        paddedContent
+                            .background(QuietScrollerInstaller())
+                    }
+                    .mask {
+                        VStack(spacing: 0) {
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 32)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var paddedContent: some View {
+        content()
+            .padding(.horizontal, 44)
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Offers its content at most `maxHeight` and takes the height the content
+/// asks for — a plain `.frame(maxHeight:)` would grow to the cap.
+private struct HeightCap: Layout {
+    let maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let height = min(proposal.height ?? maxHeight, maxHeight)
+        return subviews.first?.sizeThatFits(ProposedViewSize(width: proposal.width, height: height)) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+    }
+}
+
+/// Gives the enclosing SwiftUI scroll view the app's QuietScroller.
+private struct QuietScrollerInstaller: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async { [weak self] in
+                guard let scrollView = self?.enclosingScrollView else { return }
+                if !(scrollView.verticalScroller is QuietScroller) {
+                    scrollView.verticalScroller = QuietScroller()
+                }
+                scrollView.scrollerStyle = .overlay
+                scrollView.hasHorizontalScroller = false
+            }
+        }
+    }
+
+    func makeNSView(context: Context) -> Probe { Probe() }
+    func updateNSView(_ nsView: Probe, context: Context) {}
+}
+
+private struct SettingsPageView: View {
+    let maxHeight: CGFloat
+    let close: () -> Void
+    let showShortcuts: () -> Void
+
+    private var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+    }
+
+    var body: some View {
+        SheetPage(maxHeight: maxHeight) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Settings")
+                    .font(.system(size: 24, weight: .semibold, design: .serif))
+                    .tracking(-0.2)
+                    .foregroundColor(.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                EscButton(action: close)
+            }
+            .padding(.bottom, 20)
+        } content: {
+            VStack(alignment: .leading, spacing: 0) {
+                SettingsSection(title: "Look", labelTop: 19) { LookSettings() }
+                SettingsSection(title: "Writing", labelTop: 12) { WritingSettings() }
+                SettingsSection(title: "Library", labelTop: 10, isLast: true) { LibrarySettings() }
+                HStack(alignment: .firstTextBaseline) {
+                    SettingsLink(title: "Keyboard shortcuts →", size: 12, action: showShortcuts)
+                    Spacer()
+                    Text("Notely \(version)")
+                        .font(.notely(12))
+                        .foregroundColor(.faintIcon)
+                }
+                .padding(.top, 20)
+            }
+        }
+    }
+}
+
+private struct ShortcutsPageView: View {
+    let maxHeight: CGFloat
+    let back: () -> Void
+
+    var body: some View {
+        SheetPage(maxHeight: maxHeight, topPadding: 26) {
+            VStack(alignment: .leading, spacing: 6) {
+                SettingsLink(title: "← Settings", size: 12, action: back)
+                Text("Keyboard Shortcuts")
+                    .font(.system(size: 20, weight: .semibold, design: .serif))
+                    .foregroundColor(.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 14)
+        } content: {
+            ShortcutsSettings()
+        }
+    }
+}
+
+// MARK: - Building blocks
+
+/// Separator lines on the sheet: between rows, and the stronger one between
+/// groups. Drawn in the text color so they step down with dark mode.
+private extension Color {
+    static var settingsRowLine: Color { Color.primaryText.opacity(0.07) }
+    static var settingsGroupLine: Color { Color.primaryText.opacity(0.11) }
+}
+
+/// A group: its name in italics in the left margin, level with the first
+/// row's label, and a full-width hairline after it.
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    /// Where the name sits so it lines up with the first row's label.
+    var labelTop: CGFloat = 12
+    var isLast = false
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 20) {
+                Text(title)
+                    .font(.system(size: 14, design: .serif).italic())
+                    .foregroundColor(.faintText)
+                    .frame(width: 92, alignment: .leading)
+                    .padding(.top, labelTop)
+                    .accessibilityAddTraits(.isHeader)
+                VStack(spacing: 0) { content() }
+            }
+            if !isLast {
+                Rectangle().fill(Color.settingsGroupLine).frame(height: 1).padding(.vertical, 14)
+            }
+        }
+    }
+}
+
+/// One setting: its label (and a note under it) left, the choice right.
+private struct SettingRow<Control: View>: View {
+    let title: String
+    var detail: String? = nil
+    var height: CGFloat = 42
+    var isLast = false
+    @ViewBuilder let control: () -> Control
+
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.notely(13.5))
+                    .foregroundColor(.primaryText)
+                    .lineLimit(1)
+                if let detail {
+                    Text(detail)
+                        .font(.notely(11.5))
+                        .foregroundColor(.faintText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            Spacer(minLength: 12)
+            control()
+        }
+        .padding(.vertical, detail == nil ? 0 : 6)
+        .frame(minHeight: detail == nil ? height : max(height, 50))
+        .overlay(alignment: .bottom) {
+            if !isLast { Rectangle().fill(Color.settingsRowLine).frame(height: 1) }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Plain words, the chosen one dark and underlined in the accent. A click
+/// takes effect at once; the new line fades in as the old fades out.
+/// With keyboard navigation, Tab reaches the row and ←/→ change the choice;
+/// focus shows as a dashed accent line under the chosen word.
+private struct TextChoice<Value: Hashable>: View {
+    let options: [(label: String, value: Value)]
+    @Binding var selection: Value
+    var accessibilityLabel: String = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 18) {
+            ForEach(options, id: \.value) { option in
+                ChoiceWord(label: option.label, isSelected: option.value == selection,
+                           showsFocus: isFocused) {
+                    selection = option.value
+                }
+            }
+        }
+        .fixedSize()
+        .focusable(interactions: .activate)
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.leftArrow) { step(-1) }
+        .onKeyPress(.rightArrow) { step(1) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func step(_ delta: Int) -> KeyPress.Result {
+        guard let index = options.firstIndex(where: { $0.value == selection }) else { return .ignored }
+        let next = index + delta
+        guard options.indices.contains(next) else { return .handled }
+        selection = options[next].value
+        return .handled
+    }
+}
+
+private struct ChoiceWord: View {
+    let label: String
+    let isSelected: Bool
+    let showsFocus: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Text(label)
+            .font(.notely(13))
+            .foregroundColor(isSelected ? .primaryText : (isHovering ? .secondaryText : .faintText))
+            .overlay(alignment: .bottom) {
+                underline
+                    .frame(height: 1.5)
+                    .offset(y: 4)
+                    .opacity(isSelected ? 1 : 0)
+            }
+            .animation(.easeOut(duration: 0.15), value: isSelected)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .onHover { isHovering = $0 }
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { action() }
+    }
+
+    @ViewBuilder private var underline: some View {
+        if showsFocus {
+            Line()
+                .stroke(Color.accent, style: StrokeStyle(lineWidth: 1.5, dash: [2.5, 2]))
+        } else {
+            Rectangle().fill(Color.accent)
+        }
+    }
+
+    private struct Line: Shape {
+        func path(in rect: CGRect) -> Path {
+            Path { path in
+                path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+                path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+            }
+        }
+    }
+}
+
+/// On / Off as two words, in place of a switch.
+private struct OnOffChoice: View {
+    @Binding var isOn: Bool
+    var label: String
+
+    var body: some View {
+        TextChoice(options: [("On", true), ("Off", false)], selection: $isOn, accessibilityLabel: label)
+    }
+}
+
+/// A text link: gray for the quiet actions, the accent for the main one.
+private struct SettingsLink: View {
+    let title: String
+    var size: CGFloat = 12.5
+    var isPrimary = false
     let action: () -> Void
     @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.system(size: 10.5, weight: .bold))
-                .foregroundColor(isHovering ? .primaryText : .secondaryText)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.controlFill))
-                .contentShape(Circle())
+            Text(title)
+                .font(.notely(size))
+                .foregroundColor(color)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .onHover { isHovering = $0 }
+    }
+
+    private var color: Color {
+        if isPrimary { return Color.accent.opacity(isHovering ? 0.8 : 1) }
+        return isHovering ? .primaryText : .tertiaryText
+    }
+}
+
+/// “esc” at the sheet's top right; a light fill on hover.
+private struct EscButton: View {
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text("esc")
+                .font(.notely(12))
+                .foregroundColor(isHovering ? .secondaryText : .faintText)
+                .padding(.horizontal, 8)
+                .frame(height: 22)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isHovering ? Color.cardHover : .clear))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("Close (esc)")
@@ -220,146 +487,7 @@ private struct SettingsCloseButton: View {
     }
 }
 
-private struct SettingsNavItem: View {
-    let tab: SettingsTab
-    let isSelected: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: tab.symbol)
-                    .font(.system(size: 13.5))
-                    .foregroundColor(isSelected ? .accent : .iconMuted)
-                    .frame(width: 18)
-                Text(tab.title)
-                    .font(.notely(13, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(.primaryText)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
-                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-    }
-}
-
-// MARK: - Building blocks
-
-/// A titled group of rows on a rounded card.
-struct SettingsGroup<Content: View>: View {
-    var title: String? = nil
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let title {
-                Text(title)
-                    .font(.notely(12, weight: .semibold))
-                    .foregroundColor(.tertiaryText)
-                    .padding(.leading, 4)
-            }
-            VStack(spacing: 0) {
-                content()
-            }
-            // Glass: translucent white (graphite) panes, so the card stays
-            // see-through; elsewhere the theme's solid card color.
-            .background(ThemeManager.shared.isGlass ? Color.editorBg.opacity(0.5) : Color.card)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-    }
-}
-
-/// One setting: label (and an optional note under it) left, control right.
-struct SettingsItem<Control: View>: View {
-    let title: String
-    var detail: String? = nil
-    var isLast = false
-    var minHeight: CGFloat = 44
-    @ViewBuilder let control: () -> Control
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.notely(13))
-                    .foregroundColor(.primaryText)
-                if let detail {
-                    Text(detail)
-                        .font(.notely(11.5))
-                        .foregroundColor(.tertiaryText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-            }
-            Spacer(minLength: 12)
-            control()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .frame(minHeight: minHeight)
-        .overlay(alignment: .bottom) { if !isLast { SettingsDivider() } }
-    }
-}
-
-struct SettingsDivider: View {
-    var body: some View {
-        Rectangle().fill(Color.primaryText.opacity(0.07)).frame(height: 1)
-    }
-}
-
-/// A segmented control in the card style: a raised segment on a gray
-/// track. The native one fills the selection with the accent, which reads
-/// as an alert next to the accent swatches.
-struct SettingsSegmented<Value: Hashable>: View {
-    let options: [(label: String, value: Value)]
-    @Binding var selection: Value
-    var symbols: [Value: String] = [:]
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        HStack(spacing: 1) {
-            ForEach(options, id: \.value) { option in
-                let isSelected = option.value == selection
-                HStack(spacing: 5) {
-                    if let symbol = symbols[option.value] {
-                        Image(systemName: symbol).font(.system(size: 11, weight: .medium))
-                    }
-                    Text(option.label)
-                }
-                .font(.notely(12.5, weight: isSelected ? .medium : .regular))
-                .foregroundColor(isSelected ? .primaryText : .secondaryText)
-                .padding(.horizontal, 11)
-                .frame(height: 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isSelected ? selectedFill : Color.clear)
-                        .shadow(color: .black.opacity(isSelected ? 0.12 : 0), radius: 1, y: 1)
-                )
-                .contentShape(Rectangle())
-                .onTapGesture { selection = option.value }
-                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            }
-        }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.controlFill))
-        .fixedSize()
-    }
-
-    private var selectedFill: Color {
-        colorScheme == .dark ? Color.white.opacity(0.18) : Color.white
-    }
-}
-
-/// A small raised button (Show in Finder, Change…).
+/// A small raised button (the memo editor's Cancel / Save).
 struct SettingsButton: View {
     let title: String
     let action: () -> Void
@@ -390,72 +518,11 @@ struct SettingsButton: View {
     }
 }
 
-// MARK: - General
+// MARK: - Look
 
-struct GeneralSettings: View {
-    @Environment(FileNoteStore.self) private var store
-    @Environment(AppModel.self) private var appModel
-    @State private var openAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var loginItemError: String?
-
-    private var folderPath: String {
-        guard let url = store.workspaceURL else { return "No folder open" }
-        return (url.path as NSString).abbreviatingWithTildeInPath
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "Library") {
-                SettingsItem(title: "Notes Folder", detail: folderPath, isLast: true, minHeight: 58) {
-                    HStack(spacing: 6) {
-                        SettingsButton(title: "Show in Finder") {
-                            if let url = store.workspaceURL {
-                                NSWorkspace.shared.activateFileViewerSelecting([url])
-                            }
-                        }
-                        SettingsButton(title: "Change…") {
-                            guard let url = NotesFolderPanel.choose() else { return }
-                            store.openWorkspace(at: url)
-                            appModel.openNote(nil)
-                        }
-                    }
-                }
-            }
-            SettingsGroup(title: "Startup") {
-                SettingsItem(title: "Open at Login", detail: loginItemError ?? "Start Notely when you log in to your Mac.",
-                             isLast: true, minHeight: 54) {
-                    Toggle("", isOn: Binding(get: { openAtLogin }, set: setOpenAtLogin))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                }
-            }
-        }
-    }
-
-    private func setOpenAtLogin(_ enabled: Bool) {
-        do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
-            loginItemError = nil
-        } catch {
-            loginItemError = "Couldn't change this: \(error.localizedDescription)"
-        }
-        openAtLogin = SMAppService.mainApp.status == .enabled
-    }
-}
-
-// MARK: - Appearance
-
-struct AppearanceSettings: View {
+private struct LookSettings: View {
     @Environment(ThemeManager.self) private var themeManager
-    @AppStorage(AppSettings.editorFontKey) private var editorFont = "System"
-    @AppStorage(AppSettings.fontSizeKey) private var fontSize = AppSettings.defaultEditorFontSize
-    @AppStorage(AppSettings.lineHeightKey) private var lineHeight = 1.7
-    @AppStorage(AppSettings.editorWidthKey) private var editorWidth = "medium"
+    @State private var hoveredAccent: String?
 
     private let accentColors: [(name: String, hex: String)] = [
         ("Blue", "#1D6FC2"),
@@ -465,136 +532,82 @@ struct AppearanceSettings: View {
         ("Red", "#C4402F"),
     ]
 
-    private static let modeSymbols: [AppearanceMode: String] = [
-        .light: "sun.max", .dark: "moon", .auto: "circle.lefthalf.filled",
-    ]
-
     private var mode: Binding<AppearanceMode> {
         Binding(get: { themeManager.mode }, set: { themeManager.setMode($0) })
     }
 
-    private var lineSpacing: Binding<LineSpacingPreset> {
-        Binding(get: { LineSpacingPreset.from(multiplier: lineHeight) },
-                set: { lineHeight = $0.multiplier })
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: "Theme") {
-                SettingsItem(title: "Appearance") {
-                    SettingsSegmented(options: AppearanceMode.allCases.map { ($0.title, $0) },
-                                      selection: mode, symbols: Self.modeSymbols)
-                }
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                    ForEach(AppTheme.allCases) { theme in
-                        ThemeTile(theme: theme, isSelected: themeManager.theme == theme) {
-                            themeManager.setTheme(theme)
-                        }
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 12)
-                .padding(.bottom, 14)
-                .overlay(alignment: .bottom) { SettingsDivider() }
-                SettingsItem(title: "Accent Color", isLast: true) {
-                    HStack(spacing: 10) {
-                        ForEach(accentColors, id: \.hex) { color in
-                            AccentDot(hex: color.hex, isSelected: themeManager.accentHex == color.hex) {
-                                themeManager.setAccent(color.hex)
-                            }
-                            .help(color.name)
-                            .accessibilityLabel(color.name)
-                        }
+        SettingRow(title: "Theme", height: 56) {
+            HStack(spacing: 16) {
+                ForEach(AppTheme.allCases) { theme in
+                    ThemeSwatch(theme: theme, isSelected: themeManager.theme == theme) {
+                        themeManager.setTheme(theme)
                     }
                 }
             }
-
-            SettingsGroup(title: "Text") {
-                SettingsItem(title: "Font") {
-                    FontPicker(selection: editorFont) { editorFont = $0 }
-                }
-                SettingsItem(title: "Size") {
-                    SizeStepper(value: $fontSize, range: 12...24)
-                }
-                SettingsItem(title: "Line Spacing") {
-                    SettingsSegmented(options: LineSpacingPreset.allCases.map { ($0.label, $0) },
-                                      selection: lineSpacing)
-                }
-                SettingsItem(title: "Text Width", detail: "Longest line while writing.", isLast: true) {
-                    SettingsSegmented(options: [("Narrow", "narrow"), ("Medium", "medium"), ("Wide", "wide")],
-                                      selection: $editorWidth)
+        }
+        SettingRow(title: "Mode") {
+            TextChoice(options: AppearanceMode.allCases.map { ($0 == .auto ? "Match System" : $0.title, $0) },
+                       selection: mode, accessibilityLabel: "Mode")
+        }
+        SettingRow(title: "Accent", isLast: true) {
+            HStack(spacing: 11) {
+                // The hovered dot's name, quietly to its left.
+                Text(hoveredAccent ?? "")
+                    .font(.notely(11.5))
+                    .foregroundColor(.faintText)
+                    .padding(.trailing, 3)
+                    .animation(nil, value: hoveredAccent)
+                ForEach(accentColors, id: \.hex) { color in
+                    AccentDot(hex: color.hex, isSelected: themeManager.accentHex == color.hex) {
+                        themeManager.setAccent(color.hex)
+                    }
+                    .onHover { hoveredAccent = $0 ? color.name : (hoveredAccent == color.name ? nil : hoveredAccent) }
+                    .accessibilityLabel(color.name)
                 }
             }
         }
     }
 }
 
-/// A theme drawn as a tiny window: ground with a sidebar, a page with text,
-/// in the current light or dark. Glass carries a little white capsule, its
-/// toolbar glass.
-private struct ThemeTile: View {
+/// A theme as a tiny desk: the window's ground with a page floating on its
+/// right, in the current light or dark. The name sits underneath.
+private struct ThemeSwatch: View {
     let theme: AppTheme
     let isSelected: Bool
     let action: () -> Void
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let p = ThemePalette.palette(theme, dark: colorScheme == .dark)
-        let line = Color(nsColor: .hex(p.faintIcon))
+        let dark = colorScheme == .dark
+        let p = ThemePalette.palette(theme, dark: dark)
+        let swatch = RoundedRectangle(cornerRadius: 5, style: .continuous)
         Button(action: action) {
-            VStack(spacing: 7) {
-                HStack(alignment: .top, spacing: 4) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Capsule().fill(line).frame(width: 14, height: 3)
-                        Capsule().fill(line.opacity(0.6)).frame(width: 11, height: 3)
-                        Capsule().fill(line.opacity(0.6)).frame(width: 11, height: 3)
-                    }
-                    .padding(.leading, 6)
-                    .padding(.top, 4)
-                    .frame(width: 26, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Capsule().fill(Color(nsColor: .hex(p.text))).frame(width: 30, height: 4)
-                        Capsule().fill(line).frame(height: 3)
-                        Capsule().fill(line).frame(width: 34, height: 3)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .background(
-                        UnevenRoundedRectangle(topLeadingRadius: 5, topTrailingRadius: 5, style: .continuous)
-                            .fill(Color(nsColor: .hex(p.page)))
-                            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.06), radius: 1, y: 0.5)
-                    )
+            VStack(spacing: 4) {
+                ZStack(alignment: .trailing) {
+                    ground(p, dark: dark)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(Color(nsColor: .hex(p.page)).opacity(theme == .glass ? 0.72 : 1))
+                        .frame(width: 21)
+                        .padding(3)
                 }
-                .padding(.top, 6)
-                .padding(.trailing, 6)
-                .frame(height: 62)
-                .frame(maxWidth: .infinity)
-                .background(Color(nsColor: .hex(p.ground)))
-                .overlay(alignment: .topTrailing) {
-                    if theme == .glass {
-                        Capsule()
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.16) : Color.white)
-                            .frame(width: 16, height: 7)
-                            .shadow(color: .black.opacity(0.15), radius: 1, y: 0.5)
-                            .padding(.top, 9)
-                            .padding(.trailing, 10)
+                .frame(width: 36, height: 26)
+                .clipShape(swatch)
+                .overlay {
+                    if isSelected {
+                        // 1.5 of paper, then 1.5 of accent, outside the swatch.
+                        swatch.strokeBorder(Color.editorBg, lineWidth: 1.5).padding(-1.5)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.accent, lineWidth: 1.5).padding(-3)
+                    } else {
+                        swatch.strokeBorder(Color.primaryText.opacity(dark ? 0.14 : 0.08), lineWidth: 1)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.10), lineWidth: 0.5)
-                )
-                .padding(2)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(isSelected ? Color.accent : Color.clear, lineWidth: 2)
-                )
                 Text(theme.title)
-                    .font(.notely(12, weight: isSelected ? .semibold : .regular))
-                    .foregroundColor(isSelected ? .primaryText : .secondaryText)
+                    .font(.notely(11))
+                    .lineLimit(1)
+                    .fixedSize()
+                    .foregroundColor(isSelected ? .primaryText : .faintText)
             }
             .contentShape(Rectangle())
         }
@@ -602,39 +615,16 @@ private struct ThemeTile: View {
         .accessibilityLabel("\(theme.title) theme")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
-}
 
-/// − 16 pt + in one rounded pill.
-private struct SizeStepper: View {
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-
-    var body: some View {
-        HStack(spacing: 0) {
-            stepButton("minus", label: "Smaller") { value = max(range.lowerBound, value - 1) }
-                .disabled(value <= range.lowerBound)
-            Text("\(Int(value)) pt")
-                .font(.notely(12.5))
-                .monospacedDigit()
-                .foregroundColor(.primaryText)
-                .frame(minWidth: 44)
-            stepButton("plus", label: "Larger") { value = min(range.upperBound, value + 1) }
-                .disabled(value >= range.upperBound)
+    /// Glass's ground is whatever shows through the window: a soft wash.
+    @ViewBuilder private func ground(_ p: ThemePalette, dark: Bool) -> some View {
+        if theme == .glass {
+            LinearGradient(colors: dark ? [Color(nsColor: .hex(0x2B3038)), Color(nsColor: .hex(0x302C35))]
+                                        : [Color(nsColor: .hex(0xE3EAF1)), Color(nsColor: .hex(0xF5F2F7))],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else {
+            Color(nsColor: .hex(p.ground))
         }
-        .frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.controlFill))
-    }
-
-    private func stepButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 10.5, weight: .bold))
-                .foregroundColor(.secondaryText)
-                .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 }
 
@@ -652,26 +642,121 @@ private struct AccentDot: View {
         Button(action: action) {
             Circle()
                 .fill(fill)
-                .frame(width: 18, height: 18)
-                .padding(3)
-                .overlay(Circle().strokeBorder(isSelected ? fill : .clear, lineWidth: 1.5))
+                .frame(width: 14, height: 14)
+                .overlay {
+                    if isSelected {
+                        Circle().strokeBorder(fill, lineWidth: 1.5).frame(width: 21, height: 21)
+                    }
+                }
+                .frame(width: 21, height: 21)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, -3.5)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - Writing
+
+private struct WritingSettings: View {
+    @AppStorage(AppSettings.editorFontKey) private var editorFont = "System"
+    @AppStorage(AppSettings.fontSizeKey) private var fontSize = AppSettings.defaultEditorFontSize
+    @AppStorage(AppSettings.lineHeightKey) private var lineHeight = 1.7
+    @AppStorage(AppSettings.editorWidthKey) private var editorWidth = "medium"
+    @AppStorage(AppSettings.spellCheckKey) private var spellCheck = AppSettings.defaultSpellCheck
+    @AppStorage(AppSettings.smartPunctuationKey) private var smartPunctuation = AppSettings.defaultSmartPunctuation
+
+    private var lineSpacing: Binding<LineSpacingPreset> {
+        Binding(get: { LineSpacingPreset.from(multiplier: lineHeight) },
+                set: { lineHeight = $0.multiplier })
+    }
+
+    var body: some View {
+        SettingRow(title: "Typeface") {
+            FontPicker(selection: editorFont) { editorFont = $0 }
+        }
+        SettingRow(title: "Size") {
+            SizeStepper(value: $fontSize, range: 12...24)
+        }
+        SettingRow(title: "Line spacing") {
+            TextChoice(options: LineSpacingPreset.allCases.map { ($0.label, $0) },
+                       selection: lineSpacing, accessibilityLabel: "Line spacing")
+        }
+        SettingRow(title: "Line length") {
+            TextChoice(options: [("Narrow", "narrow"), ("Medium", "medium"), ("Wide", "wide")],
+                       selection: $editorWidth, accessibilityLabel: "Line length")
+        }
+        SettingRow(title: "Check spelling") {
+            OnOffChoice(isOn: $spellCheck, label: "Check spelling")
+        }
+        SettingRow(title: "Smart quotes and dashes", detail: "\"quotes\" → “quotes”, -- → —", isLast: true) {
+            OnOffChoice(isOn: $smartPunctuation, label: "Smart quotes and dashes")
+        }
+    }
+}
+
+/// − 16 +: two round, see-through buttons that fill on hover.
+private struct SizeStepper: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        HStack(spacing: 4) {
+            RoundStepButton(symbol: "minus", label: "Smaller", isEnabled: value > range.lowerBound) {
+                value = max(range.lowerBound, value - 1)
+            }
+            Text("\(Int(value))")
+                .font(.notely(13.5))
+                .monospacedDigit()
+                .foregroundColor(.primaryText)
+                .frame(minWidth: 24)
+                .accessibilityLabel("Size \(Int(value))")
+            RoundStepButton(symbol: "plus", label: "Larger", isEnabled: value < range.upperBound) {
+                value = min(range.upperBound, value + 1)
+            }
+        }
+        .padding(.trailing, -3)
+    }
+}
+
+private struct RoundStepButton: View {
+    let symbol: String
+    let label: String
+    let isEnabled: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondaryText)
+                .frame(width: 22, height: 22)
+                .background(Circle().fill(isHovering && isEnabled ? Color.cardHover : .clear))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
     }
 }
 
 // MARK: - Font picker
 
-/// Searchable picker for the editor body typeface. Lists the system fonts
-/// (System / New York / SF Mono — which NSFontManager does not expose as
-/// regular families) pinned at the top, followed by every installed family.
+/// The editor's typeface, written in itself, with a small ▾. Opens a
+/// searchable list: System / New York / SF Mono (which NSFontManager does
+/// not expose as regular families) first, then every installed family, each
+/// in its own face.
 struct FontPicker: View {
     let selection: String
     let onSelect: (String) -> Void
 
     @State private var isPresented = false
     @State private var searchText = ""
+    @State private var hovered: String?
 
     private let pinnedFonts = ["System", "New York", "SF Mono"]
 
@@ -681,11 +766,12 @@ struct FontPicker: View {
             .sorted()
     }
 
-    private var visibleFonts: [String] {
-        let all = pinnedFonts + installedFonts
-        let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return all }
-        return all.filter { $0.lowercased().contains(query) }
+    private var query: String {
+        searchText.trimmingCharacters(in: .whitespaces).lowercased()
+    }
+
+    private func matching(_ fonts: [String]) -> [String] {
+        query.isEmpty ? fonts : fonts.filter { $0.lowercased().contains(query) }
     }
 
     private func previewFont(for name: String, size: CGFloat) -> Font {
@@ -696,88 +782,141 @@ struct FontPicker: View {
         Button {
             isPresented.toggle()
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(selection)
-                    .font(previewFont(for: selection, size: 12.5))
+                    .font(previewFont(for: selection, size: selection == "SF Mono" ? 13 : 14))
                     .foregroundColor(.primaryText)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.tertiaryText)
+                Text(isPresented ? "▴" : "▾")
+                    .font(.system(size: 10.5))
+                    .foregroundColor(.faintText)
             }
-            .padding(.leading, 10)
-            .padding(.trailing, 8)
-            .frame(height: 26)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.controlFill))
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .popover(isPresented: $isPresented) {
-            VStack(spacing: 0) {
-                TextField("Search fonts", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .padding(10)
-                Divider()
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(visibleFonts, id: \.self) { name in
-                            HStack {
-                                Text(name)
-                                    .font(previewFont(for: name, size: 13))
-                                    .foregroundColor(.primaryText)
-                                Spacer()
-                                if name == selection {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(.accent)
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                onSelect(name)
-                                isPresented = false
-                            }
-                        }
+        .accessibilityLabel("Typeface, \(selection)")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) { list }
+    }
+
+    private var list: some View {
+        VStack(spacing: 6) {
+            TextField("Search fonts", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.notely(12.5))
+                .foregroundColor(.primaryText)
+                .padding(.horizontal, 9)
+                .frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.searchFieldBg))
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    let pinned = matching(pinnedFonts)
+                    let installed = matching(installedFonts)
+                    ForEach(pinned, id: \.self) { row($0) }
+                    if !pinned.isEmpty && !installed.isEmpty {
+                        Rectangle().fill(Color.settingsRowLine).frame(height: 1)
+                            .padding(.horizontal, 9).padding(.vertical, 5)
                     }
+                    ForEach(installed, id: \.self) { row($0) }
                 }
+                .background(QuietScrollerInstaller())
             }
-            .frame(width: 280, height: 380)
         }
+        .padding(8)
+        .frame(width: 250, height: 340)
+        // The popover's own material follows the system's light or dark,
+        // not Notely's mode; the theme's page keeps the text readable.
+        .presentationBackground(Color.editorBg)
+    }
+
+    private func row(_ name: String) -> some View {
+        let isSelected = name == selection
+        return HStack {
+            Text(name)
+                .font(previewFont(for: name, size: name == "SF Mono" ? 13 : 14))
+                .foregroundColor(.primaryText)
+                .lineLimit(1)
+            Spacer()
+            if isSelected {
+                Text("✓")
+                    .font(.notely(12))
+                    .foregroundColor(.accent)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isSelected ? Color.accent.opacity(0.08) : (hovered == name ? Color.cardHover : .clear))
+        )
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 ? name : (hovered == name ? nil : hovered) }
+        .onTapGesture {
+            onSelect(name)
+            isPresented = false
+        }
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
-// MARK: - Editor
+// MARK: - Library
 
-struct EditorSettings: View {
-    @AppStorage(AppSettings.spellCheckKey) private var spellCheck = AppSettings.defaultSpellCheck
-    @AppStorage(AppSettings.smartPunctuationKey) private var smartPunctuation = AppSettings.defaultSmartPunctuation
+private struct LibrarySettings: View {
+    @Environment(FileNoteStore.self) private var store
+    @Environment(AppModel.self) private var appModel
+    @State private var openAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginItemError: String?
+
+    private var folderName: String {
+        store.workspaceURL?.lastPathComponent ?? "No folder open"
+    }
+
+    private var folderPath: String? {
+        guard let url = store.workspaceURL else { return nil }
+        return (url.path as NSString).abbreviatingWithTildeInPath
+    }
 
     var body: some View {
-        SettingsGroup(title: "Typing") {
-            SettingsItem(title: "Check Spelling", detail: "Underline misspelled words as you type.", minHeight: 54) {
-                Toggle("", isOn: $spellCheck)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .labelsHidden()
-            }
-            SettingsItem(title: "Smart Quotes and Dashes", detail: "Turn \"quotes\" into “quotes” and -- into —.",
-                         isLast: true, minHeight: 54) {
-                Toggle("", isOn: $smartPunctuation)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .labelsHidden()
+        SettingRow(title: folderName, detail: folderPath) {
+            HStack(spacing: 14) {
+                if let url = store.workspaceURL {
+                    SettingsLink(title: "Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                }
+                SettingsLink(title: "Change…", isPrimary: true) {
+                    guard let url = NotesFolderPanel.choose() else { return }
+                    store.openWorkspace(at: url)
+                    appModel.openNote(nil)
+                }
             }
         }
+        SettingRow(title: "Open at login", detail: loginItemError, isLast: true) {
+            OnOffChoice(isOn: Binding(get: { openAtLogin }, set: setOpenAtLogin), label: "Open at login")
+        }
+    }
+
+    private func setOpenAtLogin(_ enabled: Bool) {
+        guard enabled != openAtLogin else { return }
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            loginItemError = nil
+        } catch {
+            loginItemError = "Couldn't change this: \(error.localizedDescription)"
+        }
+        openAtLogin = SMAppService.mainApp.status == .enabled
     }
 }
 
 // MARK: - Shortcuts
 
-/// The app's real commands (see AppCommands), read-only.
-struct ShortcutsSettings: View {
+/// The app's real commands (see AppCommands), read-only. Keys are plain
+/// faint text, no keycaps.
+private struct ShortcutsSettings: View {
     private let groups: [(title: String, items: [(name: String, keys: String)])] = [
         ("Notes", [
             ("New Note", "⌘N"),
@@ -794,7 +933,7 @@ struct ShortcutsSettings: View {
             ("Show Next Tab", "⌃⇥"),
             ("Show Previous Tab", "⌃⇧⇥"),
         ]),
-        ("Formatting", [
+        ("Format", [
             ("Bold", "⌘B"),
             ("Italic", "⌘I"),
             ("Insert Link", "⌘K"),
@@ -803,22 +942,34 @@ struct ShortcutsSettings: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(groups, id: \.title) { group in
-                SettingsGroup(title: group.title) {
-                    ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
-                        SettingsItem(title: item.name, isLast: index == group.items.count - 1, minHeight: 36) {
-                            HStack(spacing: 3) {
-                                ForEach(Array(item.keys.enumerated()), id: \.offset) { _, key in
-                                    Text(String(key))
-                                        .font(.notely(11.5))
-                                        .foregroundColor(.secondaryText)
-                                        .frame(minWidth: 20, minHeight: 20)
-                                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Color.controlFill))
+                HStack(alignment: .top, spacing: 16) {
+                    Text(group.title)
+                        .font(.system(size: 13, design: .serif).italic())
+                        .foregroundColor(.faintText)
+                        .frame(width: 80, alignment: .leading)
+                        .padding(.top, 7)
+                        .accessibilityAddTraits(.isHeader)
+                    VStack(spacing: 0) {
+                        ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
+                            HStack {
+                                Text(item.name)
+                                    .font(.notely(12.5))
+                                    .foregroundColor(.primaryText)
+                                Spacer()
+                                Text(item.keys)
+                                    .font(.notely(12.5))
+                                    .tracking(1.5)
+                                    .foregroundColor(.faintText)
+                            }
+                            .frame(height: 30)
+                            .overlay(alignment: .bottom) {
+                                if index < group.items.count - 1 {
+                                    Rectangle().fill(Color.settingsRowLine).frame(height: 1)
                                 }
                             }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(item.keys)
+                            .accessibilityElement(children: .combine)
                         }
                     }
                 }
