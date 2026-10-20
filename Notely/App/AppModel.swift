@@ -17,14 +17,18 @@ final class AppModel {
         activeTabId = first.id
     }
 
-    /// The detail column's width, set by the shell; the tab strip spans it.
-    var pageWidth: CGFloat = 800
+    /// The detail column's frame in window coordinates, set by the shell;
+    /// the tab strip spans it.
+    var pageFrame = CGRect(x: 0, y: 0, width: 800, height: 600)
 
     /// The page's width less the toolbar's trailing icons (New Note, Info,
     /// More — the same as with one page, so none overflows into ») — and the
-    /// traffic lights and sidebar toggle when the sidebar is hidden.
+    /// traffic lights and sidebar toggle where the page reaches under them.
+    /// Read from where the page actually is, not from the sidebar's state:
+    /// that flips at once while the page is still sliding, and a strip that
+    /// is too wide for one frame sends every toolbar item into » for good.
     var tabStripWidth: CGFloat {
-        pageWidth - 164 - (isSidebarVisible ? 0 : 132)
+        pageFrame.width - 164 - max(0, 132 - pageFrame.minX)
     }
 
     var activeIndex: Int { tabs.firstIndex { $0.id == activeTabId } ?? 0 }

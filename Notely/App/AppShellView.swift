@@ -72,9 +72,9 @@ struct AppShellView: View {
                             .padding([.leading, .trailing, .bottom], framed ? Self.pageInset : 0)
                             // The tab strip spans the page, less the toolbar's
                             // trailing icons — and the traffic lights and the
-                            // sidebar toggle when the sidebar is hidden.
-                            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
-                                appModel.pageWidth = width
+                            // sidebar toggle where the page slides under them.
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                appModel.pageFrame = frame
                             }
                             .background(appModel.groundColor)
                             .toolbarBackground(.hidden, for: .windowToolbar)
