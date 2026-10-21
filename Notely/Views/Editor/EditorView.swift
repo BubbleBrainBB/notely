@@ -309,10 +309,10 @@ struct FlatToolbarItem<Content: View>: ToolbarContent {
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
-            ToolbarItem(placement: placement, content: content)
+            ToolbarItem(placement: placement) { content().modifier(DimsWithWindow()) }
                 .sharedBackgroundVisibility(glassInGlassTheme && ThemeManager.shared.isGlass ? .visible : .hidden)
         } else {
-            ToolbarItem(placement: placement, content: content)
+            ToolbarItem(placement: placement) { content().modifier(DimsWithWindow()) }
         }
     }
 }

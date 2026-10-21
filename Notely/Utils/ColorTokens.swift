@@ -179,7 +179,17 @@ extension Color {
 
     /// Behind a card that floats over the window (Settings, search).
     static var scrim: Color {
-        Color(nsColor: NSColor(name: nil) { $0.isDark ? NSColor.black.withAlphaComponent(0.45) : NSColor.black.withAlphaComponent(0.16) })
+        Color(nsColor: NSColor(name: nil) { NSColor.black.withAlphaComponent(scrimAlpha($0)) })
+    }
+
+    /// The scrim at `strength` as a color multiplier: what lies under the
+    /// scrim comes out this many times as bright.
+    static func scrimShade(_ strength: Double) -> Color {
+        Color(nsColor: NSColor(name: nil) { NSColor(white: 1 - scrimAlpha($0) * strength, alpha: 1) })
+    }
+
+    private static func scrimAlpha(_ appearance: NSAppearance) -> CGFloat {
+        appearance.isDark ? 0.45 : 0.16
     }
 
     /// The window's ground as painted. Glass: a light white veil over the

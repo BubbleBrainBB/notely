@@ -97,7 +97,7 @@ struct AppShellView: View {
                     // Settings: a sheet of paper over the dimmed window (design board ㊶).
                     if appModel.showSettings {
                         // Lighter behind Glass, so the note reads through the sheet.
-                        Color.scrim.opacity(ThemeManager.shared.isGlass ? 0.45 : 1)
+                        Color.scrim.opacity(appModel.scrimStrength)
                             .ignoresSafeArea()
                             .onTapGesture { appModel.showSettings = false }
                             .transition(.opacity)
@@ -153,6 +153,30 @@ struct AppShellView: View {
             case .draft, .memos: true
             }
         }
+    }
+}
+
+extension AppModel {
+    /// How strongly the window is dimmed behind a floating card: fully
+    /// behind search; lighter behind Settings in Glass, so the note reads
+    /// through the sheet; 0 with neither showing.
+    var scrimStrength: Double {
+        if showSettings { return ThemeManager.shared.isGlass ? 0.45 : 1 }
+        return isSearchPresented ? 1 : 0
+    }
+}
+
+/// Toolbar items dim with the window behind search and Settings. They sit
+/// above the scrim, so the active tab stayed bright white over a dimmed
+/// page; multiplying their colors by the scrim's shade darkens them exactly
+/// as much as what lies under it, translucent parts included.
+struct DimsWithWindow: ViewModifier {
+    @Environment(AppModel.self) private var appModel
+
+    func body(content: Content) -> some View {
+        content
+            .colorMultiply(Color.scrimShade(appModel.scrimStrength))
+            .animation(.easeOut(duration: 0.16), value: appModel.scrimStrength)
     }
 }
 

@@ -34,7 +34,7 @@ struct NoteTitleHeader: ToolbarContent {
             }
             ToolbarSpacer(.flexible)
         } else if appModel.showsTabStrip {
-            ToolbarItem(placement: .navigation) { TabStrip() }
+            ToolbarItem(placement: .navigation) { TabStrip().modifier(DimsWithWindow()) }
         }
     }
 

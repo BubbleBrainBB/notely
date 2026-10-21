@@ -888,10 +888,10 @@ struct SidebarToggleItem: ToolbarContent {
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
-            ToolbarItem(placement: placement) { SidebarToggleButton() }
+            ToolbarItem(placement: placement) { SidebarToggleButton().modifier(DimsWithWindow()) }
                 .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: placement) { SidebarToggleButton() }
+            ToolbarItem(placement: placement) { SidebarToggleButton().modifier(DimsWithWindow()) }
         }
     }
 }
