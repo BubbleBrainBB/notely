@@ -22,14 +22,14 @@ final class AppModel {
     var pageFrame = CGRect(x: 0, y: 0, width: 800, height: 600)
 
     /// The page's width less the toolbar's trailing icons (New Note, Info,
-    /// More — the same as with one page, so none overflows into ») — and the
-    /// traffic lights, sidebar toggle and Back / Forward where the page
-    /// reaches under them.
+    /// More — the same as with one page, so none overflows into »), Back and
+    /// Forward before the strip, and the traffic lights and sidebar toggle
+    /// where the page reaches under them.
     /// Read from where the page actually is, not from the sidebar's state:
     /// that flips at once while the page is still sliding, and a strip that
     /// is too wide for one frame sends every toolbar item into » for good.
     var tabStripWidth: CGFloat {
-        pageFrame.width - 164 - max(0, 192 - pageFrame.minX)
+        pageFrame.width - 164 - 72 - max(0, 132 - pageFrame.minX)
     }
 
     var activeIndex: Int { tabs.firstIndex { $0.id == activeTabId } ?? 0 }

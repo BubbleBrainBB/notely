@@ -21,6 +21,7 @@ struct NoteTitleHeader: ToolbarContent {
     }
 
     var body: some ToolbarContent {
+        NavigationArrowsItem()
         if #available(macOS 26, *) {
             FlatToolbarItem(placement: .navigation, glassInGlassTheme: false) {
                 if appModel.showsTabStrip {
@@ -61,6 +62,43 @@ struct NoteTitleHeader: ToolbarContent {
     /// `title` in the body family at 13.5pt medium.
     static func styledTitle(_ title: String, fontName: String) -> AttributedString {
         BodyFace.text(title, fontName: fontName, size: 13.5, weight: .medium)
+    }
+}
+
+/// Back and Forward at the head of the page, before the title or tab
+/// strip: beside the sidebar button once the sidebar is collapsed.
+struct NavigationArrowsItem: ToolbarContent {
+    var body: some ToolbarContent {
+        FlatToolbarItem(placement: .navigation, glassInGlassTheme: false) {
+            HStack(spacing: 2) {
+                NavigationArrowButton(direction: .back)
+                NavigationArrowButton(direction: .forward)
+            }
+        }
+    }
+}
+
+/// Back / Forward through the active tab's pages (AppModel.goBack); gray
+/// when there's nowhere to go.
+struct NavigationArrowButton: View {
+    enum Direction { case back, forward }
+    let direction: Direction
+    @Environment(AppModel.self) var appModel
+
+    var body: some View {
+        let isBack = direction == .back
+        Button {
+            isBack ? appModel.goBack() : appModel.goForward()
+        } label: {
+            Label {
+                Text(isBack ? "Back" : "Forward")
+            } icon: {
+                Image(nsImage: (isBack ? ShiyeGlyph.back : ShiyeGlyph.forward).templateImage())
+            }
+        }
+        .labelStyle(.iconOnly)
+        .disabled(isBack ? !appModel.canGoBack : !appModel.canGoForward)
+        .help(isBack ? "Back (⌘[)" : "Forward (⌘])")
     }
 }
 

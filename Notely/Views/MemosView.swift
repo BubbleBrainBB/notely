@@ -888,8 +888,8 @@ private struct MemoBody: View {
     }
 }
 
-/// Memos keeps the system title alone; with more than one tab open the
-/// toolbar shows the tab strip instead, as over notes.
+/// Memos keeps the system title, after Back and Forward; with more than
+/// one tab open the toolbar shows the tab strip instead, as over notes.
 private struct MemosTabStrip: ViewModifier {
     @Environment(AppModel.self) private var appModel
 
@@ -900,6 +900,7 @@ private struct MemosTabStrip: ViewModifier {
                 .toolbar { NoteTitleHeader() }
         } else {
             content
+                .toolbar { NavigationArrowsItem() }
         }
     }
 }
