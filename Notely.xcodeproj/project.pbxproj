@@ -60,6 +60,7 @@
 		DD4BC0573F31BEF844E3B823 /* NoteTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = C504A1DB854F55CAAA4D9A0E /* NoteTree.swift */; };
 		E49CB7CEF8BB110591720FB1 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862F15E8D1FA0A7E757E7F92 /* EditorView.swift */; };
 		EDC3F2C3790B9433DE567946 /* QuickCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C59A90729E2983F706552A /* QuickCapture.swift */; };
+		E40D2FC73ECFF62D750A9BD3 /* MemoMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */; };
 		EE0BC24F859236316FA0BDFB /* MemoFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCE99219CB55CD44FB2276B /* MemoFormat.swift */; };
 		FB6F8627009D060313BB3270 /* MarkdownTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3745D3D88134D53823E2FA34 /* MarkdownTable.swift */; };
 		FE518D7B91FF175DA7482FB8 /* EditorContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B5746C3AF4A0D882715D97 /* EditorContainerView.swift */; };
@@ -85,6 +86,7 @@
 		4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleExtractor.swift; sourceTree = "<group>"; };
 		4AA0BAAC4ED8F5F19B3B740C /* VideoAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAttachment.swift; sourceTree = "<group>"; };
 		4ACD2F5A00559F187AD36321 /* InlineLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineLink.swift; sourceTree = "<group>"; };
+		423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoMarkdown.swift; sourceTree = "<group>"; };
 		4DCE99219CB55CD44FB2276B /* MemoFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoFormat.swift; sourceTree = "<group>"; };
 		62A4085CE734D06BACDB912F /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
 		65A3B1ABF107ECCBBF6D9172 /* ImageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachment.swift; sourceTree = "<group>"; };
@@ -254,6 +256,7 @@
 				333BF991B70DE6848632A323 /* LibraryMove.swift */,
 				02E74CD2E4CC0B8532F2FAF8 /* LinkRewrite.swift */,
 				4DCE99219CB55CD44FB2276B /* MemoFormat.swift */,
+				423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */,
 				E1B7A1000000000000000002 /* PDFExporter.swift */,
 				68CA4E783C0848DB5608663A /* TagExtractor.swift */,
 				4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */,
@@ -390,6 +393,7 @@
 				51E25C4CA0FD5BEDFB718359 /* LinkRewrite.swift in Sources */,
 				FB6F8627009D060313BB3270 /* MarkdownTable.swift in Sources */,
 				EE0BC24F859236316FA0BDFB /* MemoFormat.swift in Sources */,
+				E40D2FC73ECFF62D750A9BD3 /* MemoMarkdown.swift in Sources */,
 				629F37287A9E1C3EB743CCC8 /* MemoText.swift in Sources */,
 				E1B7A1000000000000000001 /* PDFExporter.swift in Sources */,
 				D33A8A647BFA55437EB1DF06 /* MemosView.swift in Sources */,

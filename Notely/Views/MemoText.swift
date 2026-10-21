@@ -128,9 +128,58 @@ struct MemoTextEditor: NSViewRepresentable {
             guard let storage = view.textStorage else { return }
             storage.beginEditing()
             storage.setAttributes(attributes, range: NSRange(location: 0, length: storage.length))
+            MemoTypography.highlight(storage, size: parent.size)
             CompositeFont(baseFont: font, familyName: AppSettings.editorFont).apply(to: storage)
             storage.endEditing()
             view.needsDisplay = true
+        }
+    }
+}
+
+extension MemoTypography {
+    /// Colors the Markdown in a memo being written, the syntax left in
+    /// place but quieter (MemoMarkdown.spans).
+    static func highlight(_ storage: NSTextStorage, size: CGFloat) {
+        let family = AppSettings.editorFont
+        let base = font(size: size)
+        let mono = NSFont.monospacedSystemFont(ofSize: size * 0.88, weight: .regular)
+        let struck: [NSAttributedString.Key: Any] = [
+            .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+            .strikethroughColor: MarkdownPalette.faint,
+        ]
+        for span in MemoMarkdown.spans(in: storage.string) {
+            let range = span.range
+            guard NSMaxRange(range) <= storage.length else { continue }
+            switch span.kind {
+            case .marker:
+                storage.addAttribute(.foregroundColor, value: MarkdownPalette.marker, range: range)
+            case .strong:
+                storage.addAttributes([
+                    .font: WysiwygEngine.resolveFont(name: family, size: size, weight: .bold),
+                    .foregroundColor: MarkdownPalette.strong(accentHex: AppSettings.accentColorHex),
+                ], range: range)
+            case .emphasis:
+                // Spans come strong first, so italic keeps an enclosing bold.
+                storage.enumerateAttribute(.font, in: range) { value, run, _ in
+                    let font = (value as? NSFont) ?? base
+                    storage.addAttribute(.font, value: NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask),
+                                         range: run)
+                }
+            case .strike:
+                storage.addAttributes(struck, range: range)
+            case .code:
+                storage.addAttributes([.font: mono, .foregroundColor: MarkdownPalette.inlineCode,
+                                       .backgroundColor: MarkdownPalette.inlineBg], range: range)
+            case .link, .tag:
+                storage.addAttribute(.foregroundColor, value: ThemeManager.shared.accentNSColor, range: range)
+            case .quote:
+                storage.addAttribute(.foregroundColor, value: MarkdownPalette.secondary, range: range)
+            case .codeBlock:
+                storage.addAttribute(.font, value: mono, range: range)
+            case .done:
+                storage.addAttributes(struck, range: range)
+                storage.addAttribute(.foregroundColor, value: MarkdownPalette.tertiary, range: range)
+            }
         }
     }
 }

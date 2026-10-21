@@ -636,10 +636,9 @@ private struct MemoRow: View {
             if isEditing {
                 editor
             } else {
-                Text(Self.attributed(memo.text, size: 15))
-                    .font(font)
-                    .lineSpacing(6)
-                    .foregroundColor(.primaryText)
+                MemoBody(text: memo.text, font: font) { line in
+                    store.updateMemo(memo, text: MemoMarkdown.togglingTask(line: line, in: memo.text))
+                }
                     .tint(.accent)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
@@ -735,6 +734,117 @@ private struct MemoRow: View {
         }
         MemoTypography.styleRuns(&result, size: size)
         return result
+    }
+}
+
+/// A saved memo's Markdown (MemoMarkdown.blocks): paragraphs, lists whose
+/// to-dos tick on a click, quotes and code blocks, drawn like the editor's.
+private struct MemoBody: View {
+    let text: String
+    let font: Font
+    /// A to-do's line in the memo was clicked.
+    let onToggle: (Int) -> Void
+
+    private static let size: CGFloat = 15
+    private static let slot: CGFloat = 22
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(MemoMarkdown.blocks(text).enumerated()), id: \.offset) { _, block in
+                view(for: block)
+            }
+        }
+    }
+
+    private func inline(_ text: String, color: Color = .primaryText) -> Text {
+        Text(MemoRow.attributed(text, size: Self.size))
+            .font(font)
+            .foregroundColor(color)
+    }
+
+    @ViewBuilder private func view(for block: MemoMarkdown.Block) -> some View {
+        switch block {
+        case .paragraph(let text):
+            inline(text)
+                .lineSpacing(6)
+                .fixedSize(horizontal: false, vertical: true)
+        case .item(let level, let marker, let text, let line):
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                markerView(marker, level: level, line: line)
+                    .frame(minWidth: Self.slot, alignment: .leading)
+                Group {
+                    if case .task(true) = marker {
+                        inline(text, color: .tertiaryText).strikethrough(color: .faintText)
+                    } else {
+                        inline(text)
+                    }
+                }
+                .lineSpacing(6)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.leading, CGFloat(level) * Self.slot)
+        case .quote(let text):
+            inline(text, color: .secondaryText)
+                .lineSpacing(6)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 14)
+                .overlay(alignment: .leading) {
+                    Capsule().fill(Color.faintIcon).frame(width: 2)
+                }
+        case .code(_, let text):
+            Text(text)
+                .font(.system(size: 12.5, design: .monospaced))
+                .foregroundColor(.primaryText)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.codeBlockBg))
+        }
+    }
+
+    // Each marker sits on the text's baseline, centered on its x-height
+    // like the editor's drawn ones (CodeBlockLayoutManager).
+    @ViewBuilder private func markerView(_ marker: MemoMarkdown.Marker, level: Int, line: Int) -> some View {
+        switch marker {
+        case .bullet:
+            Group {
+                switch level % 3 {
+                case 0: Circle().fill(Color.primaryText)
+                case 1: Circle().strokeBorder(Color.primaryText, lineWidth: 1.2)
+                default: Rectangle().fill(Color.primaryText).padding(0.5)
+                }
+            }
+            .frame(width: 5, height: 5)
+            .padding(.leading, 4)
+            .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2.5 }
+        case .ordered(let label):
+            Text(label)
+                .font(font)
+                .monospacedDigit()
+                .foregroundColor(.primaryText)
+                .padding(.trailing, 6)
+        case .task(let checked):
+            Button { onToggle(line) } label: {
+                ZStack {
+                    if checked {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.accent)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8.5, weight: .heavy))
+                            .foregroundColor(.white)
+                    } else {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .strokeBorder(Color.faintIcon, lineWidth: 1.5)
+                    }
+                }
+                .frame(width: 15, height: 15)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(checked ? "Mark as not done" : "Mark as done")
+            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+        }
     }
 }
 
