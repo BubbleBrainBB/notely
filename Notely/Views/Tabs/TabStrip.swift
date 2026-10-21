@@ -8,7 +8,17 @@ struct NoteTitleHeader: ToolbarContent {
     var title: String = ""
     var subtitle: String = ""
     @Environment(AppModel.self) private var appModel
+    @Environment(FileNoteStore.self) private var store
     @AppStorage("notely.editorFont") private var editorFontName: String = "System"
+
+    /// The one page's file, for Reveal in Finder.
+    private var activeURL: URL? {
+        switch appModel.activeTab.content {
+        case .note(let id): store.notes.first { $0.id == id }?.url
+        case .file(let id): store.files.first { $0.id == id }?.url
+        default: nil
+        }
+    }
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
@@ -17,10 +27,19 @@ struct NoteTitleHeader: ToolbarContent {
                     TabStrip()
                 } else if !title.isEmpty {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(Self.styledTitle(title, fontName: editorFontName))
-                            .foregroundColor(.secondaryText)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
+                        HStack(spacing: 5) {
+                            // A lone pinned page has no strip to show its pin.
+                            if appModel.activeTab.isPinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundColor(.faintText)
+                                    .help("Pinned")
+                            }
+                            Text(Self.styledTitle(title, fontName: editorFontName))
+                                .foregroundColor(.secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                         if !subtitle.isEmpty {
                             Text(subtitle)
                                 .font(.notely(11))
@@ -30,6 +49,7 @@ struct NoteTitleHeader: ToolbarContent {
                     }
                     .frame(maxWidth: 560, alignment: .leading)
                     .padding(.leading, 6)
+                    .overlay(RightClickMenu { appModel.tabMenu(for: appModel.activeTab, url: activeURL) })
                 }
             }
             ToolbarSpacer(.flexible)
@@ -57,7 +77,8 @@ struct TabStrip: View {
 
     static let height: CGFloat = 52
     static let tabHeight: CGFloat = 36
-    static let pinnedWidth: CGFloat = 42
+    /// A pinned tab holds its icon and a small pin mark, and nothing else.
+    static let pinnedWidth: CGFloat = 46
     static let maxTabWidth: CGFloat = 208
     static let minTabWidth: CGFloat = 96
     /// From the strip's leading edge to the first tab, room for its flare.
@@ -108,6 +129,8 @@ struct TabStrip: View {
         }
         .frame(width: stripWidth, height: Self.height, alignment: .bottomLeading)
         .animation(.easeOut(duration: 0.18), value: appModel.tabs)
+        // Right-clicking the bar itself works on the page it is showing.
+        .background(RightClickMenu { appModel.tabMenu(for: appModel.activeTab, url: url(of: appModel.activeTab)) })
     }
 
     private func chip(_ tab: NoteTab, at index: Int, width: CGFloat) -> some View {
@@ -140,25 +163,7 @@ struct TabStrip: View {
                 return NSItemProvider(object: tab.id.uuidString as NSString)
             }
             .onDrop(of: [.text], delegate: TabDropDelegate(target: tab.id, dragged: $draggedTab, appModel: appModel))
-            .contextMenu { menu(for: tab) }
-    }
-
-    @ViewBuilder private func menu(for tab: NoteTab) -> some View {
-        Button("Close Tab") { appModel.closeTab(tab.id) }
-            .disabled(tab.isPinned)
-        Button("Close Other Tabs") { appModel.closeOtherTabs(tab.id) }
-            .disabled(appModel.tabs.allSatisfy { $0.id == tab.id || $0.isPinned })
-        Button("Close Tabs to the Right") { appModel.closeTabsToTheRight(of: tab.id) }
-            .disabled(appModel.tabs.last?.id == tab.id)
-        Divider()
-        Button(tab.isPinned ? "Unpin Tab" : "Pin Tab") { appModel.togglePin(tab.id) }
-        if let url = url(of: tab) {
-            Button("Reveal in Sidebar") {
-                appModel.selectTab(tab.id)
-                if !appModel.isSidebarVisible { appModel.toggleSidebar() }
-            }
-            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-        }
+            .overlay(RightClickMenu { appModel.tabMenu(for: tab, url: url(of: tab)) })
     }
 
     private var allTabsMenu: some View {
@@ -250,8 +255,9 @@ struct TabStrip: View {
 }
 
 /// One tab. Active: the page-colored index tab; hovered: a faint fill and
-/// the close button. Pinned tabs show their icon only and can't be closed
-/// from here.
+/// the close button. Pinned tabs show their icon and a pin mark instead of
+/// their title, and can't be closed from here. Pinning is done from the
+/// right-click menu — the tab's own.
 private struct PaperTab: View {
     let tab: NoteTab
     let title: String
@@ -277,24 +283,7 @@ private struct PaperTab: View {
         }
         .buttonStyle(.plain)
         .overlay(alignment: .trailing) {
-            if showsClose {
-                Button {
-                    appModel.closeTab(tab.id)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(isHoveringClose ? .primaryText : .iconMuted)
-                        .frame(width: 16, height: 16)
-                        .background(RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(isHoveringClose ? Color.primaryText.opacity(0.10) : .clear))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .onHover { isHoveringClose = $0 }
-                .padding(.trailing, 7)
-                .help("Close Tab (⌘W)")
-                .accessibilityLabel("Close \(title)")
-            }
+            if showsClose { closeButton.padding(.trailing, 7) }
         }
         .help(help)
         .accessibilityLabel(title)
@@ -303,9 +292,17 @@ private struct PaperTab: View {
 
     @ViewBuilder private var label: some View {
         if tab.isPinned {
-            ShiyeIcon(glyph, size: 16)
-                .foregroundColor(isActive ? .secondaryText : .iconMuted)
-                .frame(maxWidth: .infinity)
+            HStack(spacing: 3) {
+                ShiyeIcon(glyph, size: 15)
+                    .foregroundColor(isActive ? .secondaryText : .iconMuted)
+                // A mark, not a button: the pin is set and taken off from the
+                // right-click menu.
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundColor(.iconMuted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 9)
         } else {
             Text(BodyFace.text(title, fontName: editorFontName, size: 13, weight: .medium))
                 .italic(tab.content == .draft)
@@ -316,6 +313,24 @@ private struct PaperTab: View {
                 .padding(.trailing, 28)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var closeButton: some View {
+        Button {
+            appModel.closeTab(tab.id)
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 8.5, weight: .bold))
+                .foregroundColor(isHoveringClose ? .primaryText : .iconMuted)
+                .frame(width: 16, height: 16)
+                .background(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isHoveringClose ? Color.primaryText.opacity(0.10) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHoveringClose = $0 }
+        .help("Close Tab (⌘W)")
+        .accessibilityLabel("Close \(title)")
     }
 
     /// In Glass the page and the strip are both pale and see-through, so the

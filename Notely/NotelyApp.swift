@@ -134,6 +134,9 @@ struct AppCommands: Commands {
                 guard let appModel else { return }
                 appModel.togglePin(appModel.activeTabId)
             }
+            // The tab's own right-click menu is swallowed by the system's
+            // toolbar menu on macOS 26, so the shortcut is the way in.
+            .keyboardShortcut("p", modifiers: [.command, .option])
             .disabled(appModel?.showsTabStrip != true)
         }
 
