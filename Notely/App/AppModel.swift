@@ -23,21 +23,52 @@ final class AppModel {
 
     /// The page's width less the toolbar's trailing icons (New Note, Info,
     /// More — the same as with one page, so none overflows into ») — and the
-    /// traffic lights and sidebar toggle where the page reaches under them.
+    /// traffic lights, sidebar toggle and Back / Forward where the page
+    /// reaches under them.
     /// Read from where the page actually is, not from the sidebar's state:
     /// that flips at once while the page is still sliding, and a strip that
     /// is too wide for one frame sends every toolbar item into » for good.
     var tabStripWidth: CGFloat {
-        pageFrame.width - 164 - max(0, 132 - pageFrame.minX)
+        pageFrame.width - 164 - max(0, 192 - pageFrame.minX)
     }
 
     var activeIndex: Int { tabs.firstIndex { $0.id == activeTabId } ?? 0 }
     var activeTab: NoteTab { tabs[activeIndex] }
 
-    /// What the active tab shows.
+    /// What the active tab shows. Changing it is a step in the tab's
+    /// history, for Back and Forward.
     private var activeContent: NoteTab.Content {
         get { activeTab.content }
-        set { tabs[activeIndex].content = newValue }
+        set {
+            let old = activeTab.content
+            guard newValue != old else { return }
+            var history = histories[activeTabId] ?? TabHistory()
+            history.visit(leaving: old)
+            histories[activeTabId] = history
+            tabs[activeIndex].content = newValue
+        }
+    }
+
+    // MARK: - Back and forward
+
+    /// Each tab's Back and Forward.
+    private var histories: [UUID: TabHistory] = [:]
+
+    var canGoBack: Bool { !(histories[activeTabId]?.back.isEmpty ?? true) }
+    var canGoForward: Bool { !(histories[activeTabId]?.forward.isEmpty ?? true) }
+
+    /// ⌘[: the page this tab showed before.
+    func goBack() { step { $0.back(from: $1) } }
+
+    /// ⌘]: the page Back left.
+    func goForward() { step { $0.forward(from: $1) } }
+
+    private func step(_ move: (inout TabHistory, NoteTab.Content) -> NoteTab.Content?) {
+        guard var history = histories[activeTabId], let page = move(&history, activeContent) else { return }
+        dismissOverlays()
+        histories[activeTabId] = history
+        // Straight to the tab, not through activeContent: that would record a visit.
+        tabs[activeIndex].content = page
     }
 
     /// The note in the active tab. Setting nil turns it into a blank draft.
@@ -197,6 +228,7 @@ final class AppModel {
     func closeTab(_ id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: index)
+        histories[id] = nil
         if tab.content != .draft {
             closedTabs.append(tab)
             if closedTabs.count > 30 { closedTabs.removeFirst() }
@@ -273,26 +305,27 @@ final class AppModel {
     /// A note or folder moved or renamed in the app: every tab inside it
     /// follows to the new path.
     func remapTabs(from old: String, to new: String) {
-        for i in tabs.indices {
-            switch tabs[i].content {
-            case .note(let id):
-                if let moved = LibraryMove.remap(id, from: old, to: new) { tabs[i].content = .note(moved) }
-            case .file(let id):
-                if let moved = LibraryMove.remap(id, from: old, to: new) { tabs[i].content = .file(moved) }
-            case .draft, .memos:
-                break
+        func remapped(_ content: NoteTab.Content) -> NoteTab.Content {
+            switch content {
+            case .note(let id): LibraryMove.remap(id, from: old, to: new).map { .note($0) } ?? content
+            case .file(let id): LibraryMove.remap(id, from: old, to: new).map { .file($0) } ?? content
+            case .draft, .memos: content
             }
         }
+        for i in tabs.indices { tabs[i].content = remapped(tabs[i].content) }
+        for id in histories.keys { histories[id]?.remap(remapped) }
     }
 
     /// A note or file was deleted: its tabs close; the window's only tab
     /// turns into a blank draft.
     func removeTabs(showing content: NoteTab.Content) {
+        for id in histories.keys { histories[id]?.remove(content) }
         for tab in tabs where tab.content == content {
             if tabs.count == 1 {
                 tabs[0].content = .draft
             } else if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
                 tabs.remove(at: index)
+                histories[tab.id] = nil
                 if tab.id == activeTabId { activeTabId = tabs[min(index, tabs.count - 1)].id }
             }
         }
@@ -303,6 +336,10 @@ final class AppModel {
     func pruneTabs(keeping exists: (NoteTab.Content) -> Bool) {
         for tab in tabs where !exists(tab.content) {
             removeTabs(showing: tab.content)
+        }
+        for id in histories.keys {
+            histories[id]?.back.removeAll { !exists($0) }
+            histories[id]?.forward.removeAll { !exists($0) }
         }
     }
 
@@ -324,6 +361,7 @@ final class AppModel {
             tabs = saved.tabs
             activeTabId = saved.tabs[saved.active].id
             closedTabs = []
+            histories = [:]
             return
         }
         let prefix = workspace.hasSuffix("/") ? workspace : workspace + "/"
@@ -331,6 +369,7 @@ final class AppModel {
         tabs = kept.isEmpty ? [NoteTab(content: .draft)] : kept
         if !tabs.contains(where: { $0.id == activeTabId }) { activeTabId = tabs[0].id }
         closedTabs = []
+        histories = [:]
     }
 
     /// The library the tabs belong to. Tabs changed while another folder is

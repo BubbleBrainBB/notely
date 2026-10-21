@@ -881,18 +881,52 @@ private struct SidebarSettingsRow: View {
     }
 }
 
-/// The sidebar button as a toolbar item: a flat icon, without the Liquid
-/// Glass circle macOS 26 puts behind toolbar buttons.
+/// The sidebar button, then Back and Forward, as one toolbar item: flat
+/// icons, without the Liquid Glass circle macOS 26 puts behind toolbar
+/// buttons, and close together beside the traffic lights.
 struct SidebarToggleItem: ToolbarContent {
     let placement: ToolbarItemPlacement
 
+    private var buttons: some View {
+        HStack(spacing: 2) {
+            SidebarToggleButton()
+            NavigationArrowButton(direction: .back)
+            NavigationArrowButton(direction: .forward)
+        }
+        .modifier(DimsWithWindow())
+    }
+
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
-            ToolbarItem(placement: placement) { SidebarToggleButton().modifier(DimsWithWindow()) }
+            ToolbarItem(placement: placement) { buttons }
                 .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: placement) { SidebarToggleButton().modifier(DimsWithWindow()) }
+            ToolbarItem(placement: placement) { buttons }
         }
+    }
+}
+
+/// Back / Forward through the active tab's pages (AppModel.goBack); gray
+/// when there's nowhere to go.
+struct NavigationArrowButton: View {
+    enum Direction { case back, forward }
+    let direction: Direction
+    @Environment(AppModel.self) var appModel
+
+    var body: some View {
+        let isBack = direction == .back
+        Button {
+            isBack ? appModel.goBack() : appModel.goForward()
+        } label: {
+            Label {
+                Text(isBack ? "Back" : "Forward")
+            } icon: {
+                Image(nsImage: (isBack ? ShiyeGlyph.back : ShiyeGlyph.forward).templateImage())
+            }
+        }
+        .labelStyle(.iconOnly)
+        .disabled(isBack ? !appModel.canGoBack : !appModel.canGoForward)
+        .help(isBack ? "Back (⌘[)" : "Forward (⌘])")
     }
 }
 

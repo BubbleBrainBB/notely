@@ -157,6 +157,12 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .sidebar) {
             Button("Toggle Sidebar") { appModel?.toggleSidebar() }
                 .keyboardShortcut("s", modifiers: [.command, .option])
+            Button("Back") { appModel?.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(appModel?.canGoBack != true)
+            Button("Forward") { appModel?.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(appModel?.canGoForward != true)
             Button("Search Notes") {
                 guard let appModel else { return }
                 appModel.presentSearch()

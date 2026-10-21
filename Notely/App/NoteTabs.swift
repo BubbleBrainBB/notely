@@ -52,3 +52,45 @@ enum SavedTabs {
         UserDefaults.standard.set(all, forKey: key)
     }
 }
+
+/// Where a tab has been, as in a browser: each tab keeps its own.
+struct TabHistory {
+    var back: [NoteTab.Content] = []
+    var forward: [NoteTab.Content] = []
+
+    static let limit = 50
+
+    /// A new page replaces whatever was ahead. A blank draft isn't a
+    /// place to come back to.
+    mutating func visit(leaving old: NoteTab.Content) {
+        forward = []
+        guard old != .draft else { return }
+        back.removeAll { $0 == old }
+        back.append(old)
+        if back.count > Self.limit { back.removeFirst() }
+    }
+
+    /// The page before `current`, which goes ahead of it; nil if none.
+    mutating func back(from current: NoteTab.Content) -> NoteTab.Content? {
+        guard let previous = back.popLast() else { return nil }
+        if current != .draft { forward.append(current) }
+        return previous
+    }
+
+    /// The page Back left, `current` going behind it; nil if none.
+    mutating func forward(from current: NoteTab.Content) -> NoteTab.Content? {
+        guard let next = forward.popLast() else { return nil }
+        if current != .draft { back.append(current) }
+        return next
+    }
+
+    mutating func remap(_ transform: (NoteTab.Content) -> NoteTab.Content) {
+        back = back.map(transform)
+        forward = forward.map(transform)
+    }
+
+    mutating func remove(_ content: NoteTab.Content) {
+        back.removeAll { $0 == content }
+        forward.removeAll { $0 == content }
+    }
+}

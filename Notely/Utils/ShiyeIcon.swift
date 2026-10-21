@@ -27,6 +27,10 @@ enum ShiyeGlyph {
     case info
     /// Three dots: more actions.
     case more
+    /// A chevron pointing left: back to the page before.
+    case back
+    /// A chevron pointing right: forward again.
+    case forward
 
     /// Stroke width at `size` points, matching 1.7 on the 24-unit grid.
     static func lineWidth(forSize size: CGFloat) -> CGFloat { 1.7 * size / 24 }
@@ -143,6 +147,12 @@ enum ShiyeGlyph {
             line(&path, (12, 11), (12, 16.5))
             // A stroke this short draws as a round dot.
             line(&path, (12, 7.6), (12, 7.65))
+
+        case .back:
+            line(&path, (14.5, 6), (8.5, 12), (14.5, 18))
+
+        case .forward:
+            line(&path, (9.5, 6), (15.5, 12), (9.5, 18))
 
         case .more:
             for x in [5.5, 12, 18.5] as [CGFloat] {
