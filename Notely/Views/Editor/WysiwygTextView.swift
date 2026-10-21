@@ -41,6 +41,18 @@ extension Notification.Name {
     static let scrollToHeading = Notification.Name("notely.scrollToHeading")
 }
 
+/// A video playing inside a note. The wheel scrolls the page, not the
+/// timeline: AVPlayerView scrubs on scroll, so a note couldn't be scrolled
+/// past a playing video. Seeking stays on the scrub bar.
+final class InlinePlayerView: AVPlayerView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Opting out of hit-testing for wheel events lets the text view
+        // underneath take them and hand them to its scroll view.
+        if NSApp.currentEvent?.type == .scrollWheel { return nil }
+        return super.hitTest(point)
+    }
+}
+
 /// Custom scroll view that ensures mouse clicks properly activate the text
 /// view as first responder, even inside SwiftUI's NavigationSplitView.
 final class EditorScrollView: NSScrollView {
@@ -1118,7 +1130,7 @@ final class WysiwygTextView: NSTextView {
     /// Players opened over video cards, keyed by attachment. The engine reuses
     /// a card's attachment object across restyles, so a player can follow its
     /// card as the text re-lays out.
-    private var videoPlayers: [ObjectIdentifier: (attachment: VideoAttachment, view: AVPlayerView)] = [:]
+    private var videoPlayers: [ObjectIdentifier: (attachment: VideoAttachment, view: InlinePlayerView)] = [:]
 
     private func playVideoIfClicked(_ event: NSEvent) -> Bool {
         guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else { return false }
@@ -1135,7 +1147,7 @@ final class WysiwygTextView: NSTextView {
             existing.view.player?.play()
             return true
         }
-        let playerView = AVPlayerView(frame: frame)
+        let playerView = InlinePlayerView(frame: frame)
         playerView.controlsStyle = .inline
         playerView.showsFullScreenToggleButton = true
         playerView.wantsLayer = true
