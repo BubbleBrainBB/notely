@@ -20,6 +20,13 @@ struct LoadedMarkdownImage {
 final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
     let markdownSource: String
     private let frames: [AnimatedImageFrame]
+    /// The image as it was decoded, kept so the attachment can be re-made at
+    /// another size (see `scaled(toFitHeight:)`).
+    private let content: LoadedMarkdownImage
+    /// The alt text drawn under the image.
+    private let caption: String
+    /// The width the image was laid out for.
+    private let maxWidth: CGFloat
     private var currentFrameIndex = 0
     private var animationTimer: Timer?
     /// The animated image's display width; the bounds are wider when the
@@ -39,6 +46,9 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
         // ImageIO), so attachment creation only computes display bounds — no
         // main-thread lockFocus redraw, which used to cost ~60ms per image.
         self.frames = content.frames
+        self.content = content
+        self.caption = caption
+        self.maxWidth = maxWidth
         super.init(data: nil, ofType: nil)
 
         if content.isAnimated {
@@ -52,21 +62,21 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
             // Static images are wrapped in a lazily drawn image that clips to
             // rounded corners and draws the alt text underneath as a caption.
             let size = Self.displaySize(for: content.image.size, maxWidth: maxWidth)
-            let caption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = caption.trimmingCharacters(in: .whitespacesAndNewlines)
             let source = content.image
             let total = NSSize(width: fillsLine ? max(size.width, maxWidth) : size.width,
-                               height: size.height + (caption.isEmpty ? 0 : Self.captionHeight))
+                               height: size.height + (trimmed.isEmpty ? 0 : Self.captionHeight))
             image = NSImage(size: total, flipped: true) { _ in
                 let imageRect = NSRect(origin: .zero, size: size)
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(roundedRect: imageRect, xRadius: Self.cornerRadius, yRadius: Self.cornerRadius).addClip()
                 source.draw(in: imageRect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
                 NSGraphicsContext.restoreGraphicsState()
-                if !caption.isEmpty {
+                if !trimmed.isEmpty {
                     let para = NSMutableParagraphStyle()
                     para.alignment = .center
                     para.lineBreakMode = .byTruncatingTail
-                    (caption as NSString).draw(
+                    (trimmed as NSString).draw(
                         in: NSRect(x: 0, y: size.height + 7, width: size.width, height: Self.captionHeight - 7),
                         withAttributes: [
                             .font: NSFont.systemFont(ofSize: 12.5),
@@ -78,6 +88,25 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
             }
             bounds = NSRect(origin: .zero, size: total)
         }
+    }
+
+    /// A copy of this image scaled to fit within `maxHeight` — the PDF export
+    /// uses it so a tall screenshot is shrunk instead of running off the page.
+    /// The image is re-made at the smaller size, so it stays sharp.
+    ///
+    /// Returns nil when the image already fits.
+    func scaled(toFitHeight maxHeight: CGFloat) -> ImageTextAttachment? {
+        let natural = content.image.size
+        guard natural.width > 0, natural.height > 0 else { return nil }
+        let shown = Self.displaySize(for: natural, maxWidth: maxWidth)
+        guard shown.height > maxHeight else { return nil }
+        // The caption sits under the image and takes its own room.
+        let room = maxHeight - (caption.isEmpty ? 0 : Self.captionHeight)
+        guard room > 0 else { return nil }
+        let width = shown.width * room / shown.height
+        guard width > 0, width < shown.width - 0.5 else { return nil }
+        return ImageTextAttachment(content: content, markdownSource: markdownSource,
+                                   caption: caption, maxWidth: width, fillsLine: false)
     }
 
     deinit {

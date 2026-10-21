@@ -66,7 +66,8 @@ struct EditorView: View {
             .background(Color.pageContentBg)
             .modifier(isDraft
                       ? NoteToolbar(emptyTitle: "New Note")
-                      : NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount))
+                      : NoteToolbar(note: note, wordCount: liveWordCount, charCount: liveCharCount,
+                                    onExportPDF: exportPDF))
             .onAppear {
                 loadNote()
             }
@@ -159,6 +160,13 @@ struct EditorView: View {
         liveCharCount = text.count
     }
 
+    /// Exports the note as a PDF. The sheet holds the text as it is on screen,
+    /// so a note that is still being typed is exported as it stands.
+    private func exportPDF() {
+        let content = live.text.isEmpty ? note.content : live.text
+        Task { await PDFExporter.export(note: note, markdown: content) }
+    }
+
     private static func wordCount(in text: String) -> Int {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? 0 : trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
@@ -199,6 +207,9 @@ struct NoteToolbar: ViewModifier {
     var charCount = 0
     /// The title shown when there's no note.
     var emptyTitle = "Notes"
+    /// Exports the note as a PDF. Set by the editor, so the sheet holds the
+    /// note as it is on screen — even while it is still being typed.
+    var onExportPDF: (() -> Void)? = nil
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
     @State private var showsInfo = false
@@ -263,6 +274,7 @@ struct NoteToolbar: ViewModifier {
                         Menu {
                             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
                             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
+                            Button("Export as PDF…") { onExportPDF?() }
                             Divider()
                             Button("Delete", role: .destructive) {
                                 appModel.removeTabs(showing: .note(note.id))
