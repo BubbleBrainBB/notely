@@ -92,6 +92,16 @@ enum MemoFormatTests {
         expect(grid[2][4] == nil, true, "days after today are empty")
         expect(grid[0][0].map { MemoFormat.day(of: $0) }, "2026-09-28", "first cell is the Monday two weeks back")
 
+        let october = MemoHeatmap.month(containing: thursday, calendar: calendar)
+        expect(october.count, 5, "October 2026 spans five Monday-first weeks")
+        expect(october[0][2] == nil && october[0][3] != nil, true, "October 1 2026 is a Thursday")
+        expect(october[0][3].map { MemoFormat.day(of: $0) }, "2026-10-01", "first day")
+        expect(october[4][5].map { MemoFormat.day(of: $0) }, "2026-10-31", "last day on Saturday")
+        expect(october[4][6] == nil, true, "padding after the last day")
+        let february = MemoHeatmap.month(containing: calendar.date(from: DateComponents(year: 2027, month: 2, day: 10))!,
+                                         calendar: calendar)
+        expect(february.count, 4, "February 2027 starts on Monday and fills four weeks")
+
         if failures == 0 {
             print("All \(checks) MemoFormat checks passed.")
         } else {

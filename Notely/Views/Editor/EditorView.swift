@@ -108,6 +108,8 @@ struct EditorView: View {
                 // nearest heading. It never covers the centered text.
                 OutlineRail(headings: outlineHeadings)
             }
+            // Text frosts and fades as it scrolls out of the page's top.
+            .overlay(alignment: .top) { PageEdgeBlur() }
         }
         .background(Color.pageContentBg)
     }

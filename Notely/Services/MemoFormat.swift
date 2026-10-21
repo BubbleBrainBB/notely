@@ -175,6 +175,22 @@ enum MemoHeatmap {
             }
         }
     }
+
+    /// The month holding `date` as weeks of seven days, Monday first; days
+    /// outside the month are nil.
+    static func month(containing date: Date, calendar: Calendar = .current) -> [[Date?]] {
+        var calendar = calendar
+        calendar.firstWeekday = 2 // Monday
+        guard let interval = calendar.dateInterval(of: .month, for: date),
+              let days = calendar.range(of: .day, in: .month, for: date) else { return [] }
+        let lead = (calendar.component(.weekday, from: interval.start) + 5) % 7 // Monday = 0
+        var cells: [Date?] = Array(repeating: nil, count: lead)
+        for offset in 0..<days.count {
+            cells.append(calendar.date(byAdding: .day, value: offset, to: interval.start))
+        }
+        while cells.count % 7 != 0 { cells.append(nil) }
+        return stride(from: 0, to: cells.count, by: 7).map { Array(cells[$0..<$0 + 7]) }
+    }
 }
 
 /// File access for memos, shared by the app window and the quick-capture

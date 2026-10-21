@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// The Memos page (design board ㉛ ①): write at the top, a quiet heatmap of
-/// the last 22 weeks, then every memo, newest first, grouped by day. Memos
-/// are stored one Markdown file per day in the library's Memos folder.
+/// The Memos page (design boards ㊷ A and ㊸ 2): write on a line at the top
+/// of the page, the memos below it, newest first, grouped by day; in the
+/// right margin a month calendar — each day's number on an accent wash that
+/// deepens with how many memos it has — and the tags. Memos are stored one
+/// Markdown file per day in the library's Memos folder.
 struct MemosView: View {
     @Environment(FileNoteStore.self) private var store
     @Environment(AppModel.self) private var appModel
@@ -11,8 +13,18 @@ struct MemosView: View {
 
     @State private var selectedDay: String?
     @State private var selectedTag: String?
+    @State private var month = Date()
+    @State private var pageWidth: CGFloat = 1000
 
-    static let columnWidth: CGFloat = 560
+    static let columnWidth: CGFloat = 460
+    static let marginWidth: CGFloat = 200
+    static let marginGap: CGFloat = 48
+
+    /// The calendar sits in the margin when there's room; otherwise above
+    /// the memos.
+    private var showsMargin: Bool {
+        pageWidth >= Self.columnWidth + Self.marginGap + Self.marginWidth + 80
+    }
 
     /// Re-read so a font change in Settings restyles the page.
     private var textFont: Font {
@@ -28,39 +40,33 @@ struct MemosView: View {
         }
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                MemoComposer { store.addMemo($0) }
-
-                HStack {
-                    Spacer(minLength: 0)
-                    MemoHeatmapView(counts: counts, selectedDay: $selectedDay)
+            HStack(alignment: .top, spacing: Self.marginGap) {
+                stream(memos: memos, shown: shown, counts: counts)
+                    .frame(width: Self.columnWidth)
+                if showsMargin {
+                    Color.clear.frame(width: Self.marginWidth, height: 1)
                 }
-                .padding(.top, 22)
-
-                filterChips
-
-                if memos.isEmpty {
-                    Text("Memos are saved in the Memos folder, one file per day.")
-                        .font(.notely(12))
-                        .foregroundColor(.faintText)
-                        .padding(.top, 28)
-                }
-
-                let groups = Self.groupedByDay(shown)
-                ForEach(groups.indices, id: \.self) { index in
-                    MemoDayGroup(day: groups[index].day, isFirst: index == 0) {
-                        ForEach(groups[index].memos) { memo in
-                            MemoRow(memo: memo, font: textFont, onTag: { tag in selectedTag = tag })
-                        }
-                    }
-                }
-                .padding(.top, 12)
             }
-            .frame(width: Self.columnWidth)
-            .padding(.top, 24)
+            .padding(.top, 34)
             .padding(.bottom, 48)
             .frame(maxWidth: .infinity)
+            .background(QuietScrollerInstaller())
         }
+        .overlay(alignment: .top) { PageEdgeBlur() }
+        // The margin stays put while the memos scroll by.
+        .overlay(alignment: .top) {
+            if showsMargin {
+                HStack(alignment: .top, spacing: Self.marginGap) {
+                    Color.clear.frame(width: Self.columnWidth, height: 1)
+                        .allowsHitTesting(false)
+                    MemoMargin(memos: memos, counts: counts, month: $month,
+                               selectedDay: $selectedDay, selectedTag: $selectedTag)
+                        .frame(width: Self.marginWidth, alignment: .leading)
+                }
+                .padding(.top, 36)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pageWidth = $0 }
         .scrollContentBackground(.hidden)
         .background(Color.pageContentBg)
         .navigationTitle("Memos")
@@ -69,14 +75,50 @@ struct MemosView: View {
         .modifier(MemosTabStrip())
     }
 
-    @ViewBuilder private var filterChips: some View {
+    private func stream(memos: [Memo], shown: [Memo], counts: [String: Int]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MemoComposer { store.addMemo($0) }
+
+            if !showsMargin {
+                HStack {
+                    Spacer(minLength: 0)
+                    MemoMonthCalendar(memos: memos, counts: counts, month: $month, selectedDay: $selectedDay)
+                        .frame(width: Self.marginWidth, alignment: .leading)
+                }
+                .padding(.top, 22)
+                .zIndex(1)
+            }
+
+            filterLine
+
+            if memos.isEmpty {
+                Text("Memos are saved in the Memos folder, one file per day.")
+                    .font(.notely(12))
+                    .foregroundColor(.faintText)
+                    .padding(.top, 28)
+            }
+
+            let groups = Self.groupedByDay(shown)
+            ForEach(groups.indices, id: \.self) { index in
+                MemoDayGroup(day: groups[index].day, isFirst: index == 0) {
+                    ForEach(groups[index].memos) { memo in
+                        MemoRow(memo: memo, font: textFont, onTag: { tag in selectedTag = tag })
+                    }
+                }
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    /// What the memos are narrowed to, each with an × that clears it.
+    @ViewBuilder private var filterLine: some View {
         if selectedDay != nil || selectedTag != nil {
-            HStack(spacing: 8) {
+            HStack(spacing: 16) {
                 if let day = selectedDay {
-                    FilterChip(label: Self.dayLabel(day, capitalized: true)) { selectedDay = nil }
+                    FilterLabel(label: Self.longDayLabel(day)) { selectedDay = nil }
                 }
                 if let tag = selectedTag {
-                    FilterChip(label: "#" + tag) { selectedTag = nil }
+                    FilterLabel(label: "#" + tag) { selectedTag = nil }
                 }
             }
             .padding(.top, 18)
@@ -97,28 +139,21 @@ struct MemosView: View {
         return groups
     }
 
-    /// "TODAY", "YESTERDAY", "OCT 14", or "OCT 14, 2025" for another year.
-    static func dayLabel(_ day: String, capitalized: Bool = false) -> String {
+    /// "Friday, October 9", with the year when it isn't this one.
+    static func longDayLabel(_ day: String) -> String {
         guard let date = MemoFormat.date(ofDay: day) else { return day }
         let calendar = Calendar.current
-        let label: String
-        if calendar.isDateInToday(date) {
-            label = "Today"
-        } else if calendar.isDateInYesterday(date) {
-            label = "Yesterday"
-        } else {
-            let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
-            label = date.formatted(sameYear ? .dateTime.month(.abbreviated).day()
-                                            : .dateTime.month(.abbreviated).day().year())
-        }
-        return capitalized ? label : label.uppercased()
+        let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: Date())
+        return date.formatted(sameYear ? .dateTime.weekday(.wide).month(.wide).day()
+                                       : .dateTime.weekday(.wide).month(.wide).day().year())
     }
 }
 
 // MARK: - Composer
 
-/// The writing area: no title, grows with its text, ⌘↩ (or the arrow) adds
-/// the memo to today's file.
+/// The writing line: no box, just the placeholder on the paper and a
+/// hairline under it; grows with its text. ⌘↩ (or Save) adds the memo to
+/// today's file.
 struct MemoComposer: View {
     var placeholder = "Write it down…"
     let onSubmit: (String) -> Void
@@ -128,35 +163,37 @@ struct MemoComposer: View {
     private var isEmpty: Bool { draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            MemoTextEditor(text: $draft, placeholder: placeholder, focusRequest: focusRequest, onSubmit: submit)
+        VStack(alignment: .leading, spacing: 0) {
+            MemoTextEditor(text: $draft, size: 16, placeholder: placeholder, minHeight: 26,
+                           focusRequest: focusRequest, onSubmit: submit)
+                .padding(.bottom, 12)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(Color.primaryText.opacity(0.09)).frame(height: 1)
+                }
             HStack(spacing: 14) {
-                Button {
+                QuietTextButton(title: "# Tag") {
                     draft += (draft.isEmpty || draft.hasSuffix(" ") || draft.hasSuffix("\n")) ? "#" : " #"
                     focusRequest += 1
-                } label: {
-                    ShiyeIcon(.tag, size: 15).foregroundColor(.iconMuted)
                 }
-                .buttonStyle(.plain)
                 .help("Add a tag")
                 Spacer(minLength: 0)
                 Button(action: submit) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 26, height: 26)
-                        .background(Circle().fill(isEmpty ? Color.accent.opacity(0.22) : Color.accent))
+                    HStack(spacing: 6) {
+                        if !isEmpty {
+                            Text("Save").foregroundColor(.accent)
+                        }
+                        Text(isEmpty ? "⌘↩ to save" : "⌘↩").foregroundColor(.faintText)
+                    }
+                    .font(.notely(11.5))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isEmpty)
                 .keyboardShortcut(.return, modifiers: .command)
                 .help("Save (⌘↩)")
             }
+            .padding(.top, 8)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.sidebarBg))
     }
 
     private func submit() {
@@ -166,90 +203,344 @@ struct MemoComposer: View {
     }
 }
 
-// MARK: - Heatmap
-
-/// 22 weeks of days, Monday at the top; a day's shade follows how many memos
-/// it has, in the accent color. No numbers — hover a day for its count,
-/// click it to see only that day.
-struct MemoHeatmapView: View {
-    let counts: [String: Int]
-    @Binding var selectedDay: String?
-    var weeks = 22
-    var cell: CGFloat = 9
-    var gap: CGFloat = 3
-
-    private static let shades: [Double] = [0, 0.16, 0.32, 0.55, 0.85]
+/// Small gray text that darkens on hover.
+private struct QuietTextButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        let grid = MemoHeatmap.grid(weeks: weeks, endingAt: Date())
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: gap) {
-                ForEach(grid.indices, id: \.self) { index in
-                    Text(monthLabel(grid, index))
-                        .font(.notely(10))
-                        .foregroundColor(.faintText)
-                        .fixedSize()
-                        .frame(width: cell, alignment: .leading)
-                }
-            }
-            HStack(spacing: gap) {
-                ForEach(grid.indices, id: \.self) { week in
-                    VStack(spacing: gap) {
-                        ForEach(0..<7, id: \.self) { weekday in
-                            dayCell(grid[week][weekday])
+        Button(action: action) {
+            Text(title)
+                .font(.notely(11.5))
+                .foregroundColor(isHovering ? .secondaryText : .faintText)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
+// MARK: - Margin: calendar and tags
+
+private struct MemoMargin: View {
+    let memos: [Memo]
+    let counts: [String: Int]
+    @Binding var month: Date
+    @Binding var selectedDay: String?
+    @Binding var selectedTag: String?
+
+    private var tags: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for memo in memos {
+            for tag in Set(memo.tags) { counts[tag, default: 0] += 1 }
+        }
+        return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(12)
+            .map { ($0.key, $0.value) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            MemoMonthCalendar(memos: memos, counts: counts, month: $month, selectedDay: $selectedDay)
+                .zIndex(1)
+            let tags = tags
+            if !tags.isEmpty {
+                Rectangle().fill(Color.primaryText.opacity(0.09)).frame(height: 1)
+                    .padding(.top, 18)
+                    .padding(.bottom, 14)
+                Text("Tags")
+                    .font(.system(size: 13, design: .serif).italic())
+                    .foregroundColor(.faintText)
+                    .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 7) {
+                    ForEach(tags, id: \.name) { tag in
+                        TagLine(name: tag.name, count: tag.count, isSelected: selectedTag == tag.name) {
+                            selectedTag = selectedTag == tag.name ? nil : tag.name
                         }
                     }
                 }
             }
         }
     }
+}
 
-    /// The month's name over the first week that starts in it.
-    private func monthLabel(_ grid: [[Date?]], _ index: Int) -> String {
-        guard let first = grid[index].first ?? nil else { return "" }
-        let calendar = Calendar.current
-        if index > 0, let previous = grid[index - 1].first ?? nil,
-           calendar.component(.month, from: previous) == calendar.component(.month, from: first) {
-            return ""
-        }
-        if index == 0, calendar.component(.day, from: first) > 7 { return "" }
-        return first.formatted(.dateTime.month(.abbreviated))
-    }
+private struct TagLine: View {
+    let name: String
+    let count: Int
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovering = false
 
-    @ViewBuilder private func dayCell(_ date: Date?) -> some View {
-        if let date {
-            let day = MemoFormat.day(of: date)
-            let count = counts[day] ?? 0
-            let level = MemoHeatmap.level(for: count)
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(level == 0 ? Color.inlineFill : Color.accent.opacity(Self.shades[level]))
-                .frame(width: cell, height: cell)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .strokeBorder(Color.accent, lineWidth: selectedDay == day ? 1.5 : 0)
-                        .padding(-2)
-                )
-                .contentShape(Rectangle())
-                .help("\(date.formatted(.dateTime.month(.abbreviated).day())) · \(count) memo\(count == 1 ? "" : "s")")
-                .onTapGesture {
-                    guard count > 0 || selectedDay == day else { return }
-                    selectedDay = selectedDay == day ? nil : day
-                }
-        } else {
-            Color.clear.frame(width: cell, height: cell)
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text("#" + name)
+                    .font(.notely(12.5, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(Color.accent.opacity(isHovering && !isSelected ? 0.75 : 1))
+                    .underline(isSelected, color: .accent)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+                Text("\(count)")
+                    .font(.notely(12))
+                    .monospacedDigit()
+                    .foregroundColor(.faintIcon)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(isSelected ? "Show all memos" : "Show memos tagged #\(name)")
     }
 }
 
-/// One day of memos, diary style (design board ㉜ B): the date hangs in a
-/// column on the left — the day's number, then the weekday (and the month,
+/// A month, Monday first. A day's number sits on an accent wash that
+/// deepens in four steps with how many memos it has; today has an accent
+/// ring. Hover a day for its memos, click it to see only that day.
+struct MemoMonthCalendar: View {
+    let memos: [Memo]
+    let counts: [String: Int]
+    @Binding var month: Date
+    @Binding var selectedDay: String?
+    @Environment(\.colorScheme) private var colorScheme
+
+    @State private var hoveredDay: String?
+    @State private var cardDay: String?
+    @State private var cardTask: Task<Void, Never>?
+
+    static let cell: CGFloat = 28
+    static let rowHeight: CGFloat = 30
+    static let cardWidth: CGFloat = 250
+    private static let weekdays = ["M", "T", "W", "T", "F", "S", "S"]
+
+    /// The wash for levels 0…4; a step stronger on a dark page.
+    private var wash: [Double] {
+        colorScheme == .dark ? [0, 0.16, 0.26, 0.38, 0.52] : [0, 0.09, 0.16, 0.24, 0.32]
+    }
+
+    var body: some View {
+        let weeks = MemoHeatmap.month(containing: month)
+        let days = weeks.joined().compactMap { $0 }.map(MemoFormat.day(of:))
+        let monthCount = days.reduce(0) { $0 + (counts[$1] ?? 0) }
+        let activeDays = days.filter { (counts[$0] ?? 0) > 0 }.count
+
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                (Text(month.formatted(.dateTime.month(.wide)))
+                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .foregroundColor(.primaryText)
+                 + Text(" " + month.formatted(.dateTime.year()))
+                    .font(.system(size: 15, design: .serif))
+                    .foregroundColor(.faintText))
+                Spacer(minLength: 0)
+                HStack(spacing: 2) {
+                    MonthArrow(symbol: "chevron.left", label: "Previous Month") { shift(-1) }
+                    MonthArrow(symbol: "chevron.right", label: "Next Month") { shift(1) }
+                }
+            }
+            .padding(.bottom, 10)
+
+            HStack(spacing: 0) {
+                ForEach(Self.weekdays.indices, id: \.self) { index in
+                    Text(Self.weekdays[index])
+                        .font(.notely(10))
+                        .foregroundColor(.faintText)
+                        .frame(width: Self.cell)
+                }
+            }
+            .padding(.bottom, 2)
+
+            ForEach(weeks.indices, id: \.self) { row in
+                HStack(spacing: 0) {
+                    ForEach(0..<7, id: \.self) { column in
+                        if let date = weeks[row][column] {
+                            dayCell(date, column: column)
+                        } else {
+                            Color.clear.frame(width: Self.cell, height: Self.rowHeight)
+                        }
+                    }
+                }
+                .zIndex(weeks[row].contains { $0.map(MemoFormat.day(of:)) == cardDay } ? 1 : 0)
+            }
+
+            Text(monthCount == 0 ? "Nothing yet this month"
+                 : "\(monthCount) memo\(monthCount == 1 ? "" : "s") · \(activeDays) day\(activeDays == 1 ? "" : "s")")
+                .font(.notely(11.5))
+                .foregroundColor(.faintText)
+                .padding(.top, 10)
+        }
+        .frame(width: Self.cell * 7, alignment: .leading)
+    }
+
+    private func dayCell(_ date: Date, column: Int) -> some View {
+        let day = MemoFormat.day(of: date)
+        let count = counts[day] ?? 0
+        let level = MemoHeatmap.level(for: count)
+        let isToday = Calendar.current.isDateInToday(date)
+        let isSelected = selectedDay == day
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        let numberColor: Color = isSelected ? .white : (isToday ? .accent : (count > 0 ? .primaryText : .faintIcon))
+        return Button {
+            guard count > 0 || isSelected else { return }
+            selectedDay = isSelected ? nil : day
+            cardDay = nil
+        } label: {
+            Text("\(Calendar.current.component(.day, from: date))")
+                .font(.notely(12, weight: isSelected || isToday ? .semibold : (count > 0 ? .medium : .regular)))
+                .monospacedDigit()
+                .foregroundColor(numberColor)
+                .frame(width: 24, height: 24)
+                .background(shape.fill(isSelected ? Color.accent : Color.accent.opacity(wash[level])))
+                .overlay(shape.strokeBorder(Color.accent, lineWidth: isToday && !isSelected ? 1.5 : 0))
+                .frame(width: Self.cell, height: Self.rowHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { inside in hover(day, count: count, inside: inside) }
+        .overlay(alignment: .top) {
+            if cardDay == day {
+                MemoDayCard(day: day, memos: memos.filter { $0.day == day })
+                    // Right edge with the calendar's, just under the day.
+                    .offset(x: Self.cell * 7 - Self.cardWidth / 2 - (CGFloat(column) * Self.cell + Self.cell / 2),
+                            y: Self.rowHeight + 2)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityLabel("\(date.formatted(.dateTime.month(.wide).day())), \(count) memo\(count == 1 ? "" : "s")")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The card waits a moment before it shows, then follows the pointer
+    /// from day to day without waiting again.
+    private func hover(_ day: String, count: Int, inside: Bool) {
+        cardTask?.cancel()
+        if inside {
+            hoveredDay = day
+            guard count > 0 else {
+                cardDay = nil
+                return
+            }
+            if cardDay != nil {
+                cardDay = day
+                return
+            }
+            cardTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled, hoveredDay == day else { return }
+                withAnimation(.easeOut(duration: 0.12)) { cardDay = day }
+            }
+        } else if hoveredDay == day {
+            hoveredDay = nil
+            cardTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(80))
+                guard !Task.isCancelled, hoveredDay == nil else { return }
+                withAnimation(.easeOut(duration: 0.12)) { cardDay = nil }
+            }
+        }
+    }
+
+    private func shift(_ months: Int) {
+        if let next = Calendar.current.date(byAdding: .month, value: months, to: month) { month = next }
+    }
+}
+
+private struct MonthArrow: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(isHovering ? .secondaryText : .faintText)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(isHovering ? Color.cardHover : .clear))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(label)
+    }
+}
+
+/// A day's memos at a glance: the date, how many, and each memo's time and
+/// first line.
+private struct MemoDayCard: View {
+    let day: String
+    let memos: [Memo]
+
+    private static let shown = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(MemosView.longDayLabel(day))
+                    .font(.system(size: 14, weight: .semibold, design: .serif))
+                    .foregroundColor(.primaryText)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text("\(memos.count) memo\(memos.count == 1 ? "" : "s")")
+                    .font(.notely(11))
+                    .foregroundColor(.faintText)
+                    .fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(memos.prefix(Self.shown)) { memo in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(memo.time)
+                            .font(Font(MemoTypography.italic(size: 12)))
+                            .monospacedDigit()
+                            .foregroundColor(.faintText)
+                            .frame(width: 36, alignment: .leading)
+                        Text(Self.firstLine(of: memo.text))
+                            .font(Font(MemoTypography.font(size: 12.5)))
+                            .foregroundColor(.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                if memos.count > Self.shown {
+                    Text("\(memos.count - Self.shown) more")
+                        .font(.notely(11))
+                        .foregroundColor(.faintText)
+                        .padding(.leading, 46)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(width: MemoMonthCalendar.cardWidth, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.editorBg)
+                .shadow(color: .black.opacity(0.14), radius: 20, y: 10)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Color.primaryText.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    static func firstLine(of text: String) -> String {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty } ?? ""
+    }
+}
+
+/// One day of memos, diary style (design boards ㉜ B, ㊷ A): the date hangs
+/// in a column on the left — the day's number, then the weekday (and the month,
 /// outside the current one) — with that day's memos beside it.
 private struct MemoDayGroup<Content: View>: View {
     let day: String
     let isFirst: Bool
     @ViewBuilder let content: () -> Content
 
-    static var dateColumn: CGFloat { 48 }
+    static var dateColumn: CGFloat { 40 }
 
     private var date: Date? { MemoFormat.date(ofDay: day) }
 
@@ -268,13 +559,13 @@ private struct MemoDayGroup<Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 22) {
-            VStack(alignment: .trailing, spacing: 5) {
+        HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .trailing, spacing: 4) {
                 Text(date.map { String(Calendar.current.component(.day, from: $0)) } ?? day)
-                    .font(Font(MemoTypography.font(size: 30)))
+                    .font(Font(MemoTypography.font(size: 26)))
                     .foregroundColor(.primaryText)
                 Text(subtitle)
-                    .font(Font(MemoTypography.italic(size: 12)))
+                    .font(Font(MemoTypography.italic(size: 11.5)))
                     .foregroundColor(.faintText)
                     .fixedSize()
             }
@@ -285,30 +576,34 @@ private struct MemoDayGroup<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.top, 18)
+        .padding(.top, 16)
         .padding(.bottom, 4)
         .overlay(alignment: .top) {
-            if !isFirst { Rectangle().fill(Color.borderColor).frame(height: 1) }
+            if !isFirst { Rectangle().fill(Color.primaryText.opacity(0.07)).frame(height: 1) }
         }
     }
 }
 
-private struct FilterChip: View {
+/// A filter as plain words with an × after them; a click clears it.
+private struct FilterLabel: View {
     let label: String
     let onClear: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: onClear) {
             HStack(spacing: 6) {
-                Text(label).font(.notely(12))
-                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+                Text(label)
+                    .font(.notely(12.5))
+                    .foregroundColor(.secondaryText)
+                Image(systemName: "xmark")
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundColor(isHovering ? .secondaryText : .faintText)
             }
-            .foregroundColor(.secondaryText)
-            .padding(.horizontal, 10)
-            .frame(height: 24)
-            .background(Capsule().fill(Color.sidebarBg))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
         .help("Show all memos")
     }
 }
@@ -332,7 +627,7 @@ private struct MemoRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(memo.time)
-                    .font(Font(MemoTypography.italic(size: 12.5)))
+                    .font(Font(MemoTypography.italic(size: 12)))
                     .monospacedDigit()
                     .foregroundColor(.faintText)
                 Spacer(minLength: 0)
@@ -345,7 +640,7 @@ private struct MemoRow: View {
                     .font(font)
                     .lineSpacing(6)
                     .foregroundColor(.primaryText)
-                    .tint(.secondaryText)
+                    .tint(.accent)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .environment(\.openURL, OpenURLAction { url in
@@ -414,7 +709,7 @@ private struct MemoRow: View {
     }
 
     /// The memo with inline Markdown (bold, italic, code, links) and its
-    /// `#tags` as quiet, clickable runs.
+    /// `#tags` as clickable runs in the accent.
     static func attributed(_ text: String, size: CGFloat) -> AttributedString {
         let ns = text as NSString
         func inline(_ s: String) -> AttributedString {
@@ -428,8 +723,7 @@ private struct MemoRow: View {
                 result += inline(ns.substring(with: NSRange(location: cursor, length: tag.range.location - cursor)))
             }
             var run = AttributedString(ns.substring(with: tag.range))
-            run.foregroundColor = Color.secondaryText
-            run.backgroundColor = Color.inlineFill
+            run.foregroundColor = Color.accent
             if let encoded = tag.name.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) {
                 run.link = URL(string: "notely-tag://" + encoded)
             }
