@@ -152,8 +152,8 @@ struct MemosView: View {
 // MARK: - Composer
 
 /// The writing line: no box, just the placeholder on the paper and a
-/// hairline under it; grows with its text. ⌘↩ (or Save) adds the memo to
-/// today's file.
+/// hairline under it; grows with its text. Return starts a new line; Save
+/// (or ⌘↩) adds the memo to today's file.
 struct MemoComposer: View {
     var placeholder = "Write it down…"
     let onSubmit: (String) -> Void
@@ -177,20 +177,11 @@ struct MemoComposer: View {
                 }
                 .help("Add a tag")
                 Spacer(minLength: 0)
-                Button(action: submit) {
-                    HStack(spacing: 6) {
-                        if !isEmpty {
-                            Text("Save").foregroundColor(.accent)
-                        }
-                        Text(isEmpty ? "⌘↩ to save" : "⌘↩").foregroundColor(.faintText)
-                    }
-                    .font(.notely(11.5))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isEmpty)
-                .keyboardShortcut(.return, modifiers: .command)
-                .help("Save (⌘↩)")
+                Button("Save", action: submit)
+                    .buttonStyle(MemoSaveButtonStyle())
+                    .disabled(isEmpty)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Save (⌘↩)")
             }
             .padding(.top, 8)
         }
@@ -218,6 +209,37 @@ private struct QuietTextButton: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+}
+
+/// The composer's Save: faint while there's nothing to save, then the
+/// accent, on an accent wash under the pointer that deepens when pressed.
+private struct MemoSaveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Label(configuration: configuration)
+    }
+
+    private struct Label: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+        @State private var isHovering = false
+
+        var body: some View {
+            let wash = !isEnabled ? 0 : configuration.isPressed ? 0.16 : isHovering ? 0.10 : 0
+            configuration.label
+                .font(.notely(12))
+                .foregroundColor(isEnabled ? .accent : .faintText)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.accent.opacity(wash))
+                )
+                .contentShape(Rectangle())
+                // The word lines up with the hairline's end; the wash reaches past it.
+                .padding(.trailing, -10)
+                .onHover { isHovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: wash)
+        }
     }
 }
 
@@ -595,16 +617,34 @@ private struct FilterLabel: View {
             HStack(spacing: 6) {
                 Text(label)
                     .font(.notely(12.5))
-                    .foregroundColor(.secondaryText)
+                    .foregroundColor(isHovering ? .primaryText : .secondaryText)
                 Image(systemName: "xmark")
                     .font(.system(size: 8.5, weight: .semibold))
                     .foregroundColor(isHovering ? .secondaryText : .faintText)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(FilterLabelStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
         .help("Show all memos")
+    }
+
+    /// A gray wash under the pointer, deeper while pressed; the label stays
+    /// in line with the memos, the wash reaching past it.
+    private struct FilterLabelStyle: ButtonStyle {
+        let isHovering: Bool
+
+        func makeBody(configuration: Configuration) -> some View {
+            configuration.label
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primaryText.opacity(configuration.isPressed ? 0.08 : isHovering ? 0.05 : 0))
+                )
+                .contentShape(Rectangle())
+                .padding(.horizontal, -8)
+        }
     }
 }
 
