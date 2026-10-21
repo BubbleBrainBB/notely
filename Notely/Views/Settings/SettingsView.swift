@@ -192,26 +192,6 @@ private struct HeightCap: Layout {
     }
 }
 
-/// Gives the enclosing SwiftUI scroll view the app's QuietScroller.
-private struct QuietScrollerInstaller: NSViewRepresentable {
-    final class Probe: NSView {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            DispatchQueue.main.async { [weak self] in
-                guard let scrollView = self?.enclosingScrollView else { return }
-                if !(scrollView.verticalScroller is QuietScroller) {
-                    scrollView.verticalScroller = QuietScroller()
-                }
-                scrollView.scrollerStyle = .overlay
-                scrollView.hasHorizontalScroller = false
-            }
-        }
-    }
-
-    func makeNSView(context: Context) -> Probe { Probe() }
-    func updateNSView(_ nsView: Probe, context: Context) {}
-}
-
 private struct SettingsPageView: View {
     let maxHeight: CGFloat
     let close: () -> Void
@@ -932,6 +912,7 @@ private struct ShortcutsSettings: View {
             ("Reopen Closed Tab", "⇧⌘T"),
             ("Show Next Tab", "⌃⇥"),
             ("Show Previous Tab", "⌃⇧⇥"),
+            ("Pin / Unpin Tab", "⌥⌘P"),
         ]),
         ("Format", [
             ("Bold", "⌘B"),

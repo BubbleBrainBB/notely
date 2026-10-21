@@ -105,7 +105,7 @@ struct SidebarView: View {
                 .padding(.leading, Self.leadingInset)
                 .padding(.trailing, 8)
                 .padding(.bottom, 16)
-                .background(SidebarScrollerConfigurator())
+                .background(QuietScrollerInstaller(shortensKnob: true))
             }
             .scrollContentBackground(.hidden)
             // Dropped anywhere but on a row: out to the library's top level.
@@ -1097,32 +1097,5 @@ private struct SidebarSplitHook: NSViewRepresentable {
                 if self.isCollapsed { self.pendingWidth = width } else { self.setWidth(width, save: false) }
             }
         }
-    }
-}
-
-// MARK: - Scroller
-
-private struct SidebarScrollerConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { configureScroller(from: view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { configureScroller(from: nsView) }
-    }
-
-    private func configureScroller(from view: NSView) {
-        guard let scrollView = view.enclosingScrollView,
-              !(scrollView.verticalScroller is QuietScroller) else { return }
-
-        let scroller = QuietScroller(frame: .zero)
-        scroller.shortensKnob = true
-        scroller.scrollerStyle = .overlay
-        scrollView.verticalScroller = scroller
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
     }
 }
