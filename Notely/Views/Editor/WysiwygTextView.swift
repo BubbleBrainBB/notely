@@ -531,17 +531,48 @@ final class WysiwygTextView: NSTextView {
         scrollToVisible(revealRect)
     }
 
-    /// The caret takes its height from the neighboring character's font,
-    /// which is tiny next to collapsed Markdown syntax. Never draw it shorter
-    /// than a body line.
+    /// AppKit draws the caret as tall as the whole line, and body lines are
+    /// set at ~1.7× the font size, so it towered over the letters. Draw it
+    /// the height of the font instead (ascender to descender), standing on
+    /// the line's baseline. Next to collapsed Markdown syntax the neighboring
+    /// font is tiny, so never go below the body font.
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
-        var rect = rect
-        let minHeight = ceil(fontSize * 1.25)
-        if rect.height < minHeight {
-            rect.origin.y = rect.maxY - minHeight
-            rect.size.height = minHeight
+        super.drawInsertionPoint(in: fittedCaretRect(rect), color: color, turnedOn: flag)
+    }
+
+    private func fittedCaretRect(_ rect: NSRect) -> NSRect {
+        let typed = (typingAttributes[.font] as? NSFont) ?? font ?? .systemFont(ofSize: fontSize)
+        let caretFont = typed.pointSize < fontSize * 0.8 ? (NSFont(descriptor: typed.fontDescriptor, size: fontSize) ?? typed) : typed
+        let height = ceil(caretFont.ascender - caretFont.descender)
+        guard height < rect.height else { return rect }
+
+        var fitted = rect
+        fitted.size.height = height
+        // The baseline of the line the caret is on: from the glyph at the
+        // caret, or the one before it at the end of a wrapped line.
+        if let baseline = baselineY(near: rect) {
+            fitted.origin.y = baseline - caretFont.ascender
+        } else {
+            fitted.origin.y = rect.maxY - height
         }
-        super.drawInsertionPoint(in: rect, color: color, turnedOn: flag)
+        // Stay inside the line AppKit gave us.
+        fitted.origin.y = min(max(fitted.origin.y, rect.minY), rect.maxY - height)
+        fitted.origin.y = floor(fitted.origin.y)
+        return fitted
+    }
+
+    private func baselineY(near rect: NSRect) -> CGFloat? {
+        guard let layoutManager, let textStorage, textStorage.length > 0 else { return nil }
+        let location = selectedRange().location
+        for index in [location, location - 1] where index >= 0 && index < textStorage.length {
+            let glyph = layoutManager.glyphIndexForCharacter(at: index)
+            guard glyph < layoutManager.numberOfGlyphs else { continue }
+            var line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            line.origin.y += textContainerOrigin.y
+            guard line.minY <= rect.midY, rect.midY <= line.maxY else { continue }
+            return line.minY + layoutManager.location(forGlyphAt: glyph).y
+        }
+        return nil
     }
 
     override func setNeedsDisplay(_ invalidRect: NSRect, avoidAdditionalLayout flag: Bool) {
