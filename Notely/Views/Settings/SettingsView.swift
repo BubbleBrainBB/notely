@@ -402,25 +402,45 @@ private struct SettingRow<Control: View>: View {
     }
 }
 
-/// Plain words, the chosen one dark and underlined in the accent. A click
-/// takes effect at once; the new line fades in as the old fades out.
-/// With keyboard navigation, Tab reaches the row and ←/→ change the choice;
-/// focus shows as a dashed accent line under the chosen word.
+/// The choices as a quiet segmented control (design board ㊽ C): a faint
+/// track, the chosen word on a raised white segment that slides to a new
+/// choice. A click takes effect at once. With keyboard navigation, Tab
+/// reaches the row and ←/→ change the choice; focus rings the segment in
+/// the accent.
 private struct TextChoice<Value: Hashable>: View {
     let options: [(label: String, value: Value)]
     @Binding var selection: Value
     var accessibilityLabel: String = ""
     @FocusState private var isFocused: Bool
+    @Namespace private var segment
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 0) {
             ForEach(options, id: \.value) { option in
-                ChoiceWord(label: option.label, isSelected: option.value == selection,
-                           showsFocus: isFocused) {
-                    selection = option.value
+                ChoiceWord(label: option.label, isSelected: option.value == selection) {
+                    withAnimation(.easeOut(duration: 0.18)) { selection = option.value }
+                }
+                .background {
+                    if option.value == selection {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(colorScheme == .dark ? Color.white.opacity(0.14) : Color.white)
+                            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 1, y: 1)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .strokeBorder(isFocused ? Color.accent : Color.black.opacity(0.06),
+                                                  lineWidth: isFocused ? 1.5 : 0.5)
+                            }
+                            .matchedGeometryEffect(id: "segment", in: segment)
+                    }
                 }
             }
         }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primaryText.opacity(colorScheme == .dark ? 0.08 : 0.05))
+        )
         .fixedSize()
         .focusable(interactions: .activate)
         .focused($isFocused)
@@ -435,7 +455,7 @@ private struct TextChoice<Value: Hashable>: View {
         guard let index = options.firstIndex(where: { $0.value == selection }) else { return .ignored }
         let next = index + delta
         guard options.indices.contains(next) else { return .handled }
-        selection = options[next].value
+        withAnimation(.easeOut(duration: 0.18)) { selection = options[next].value }
         return .handled
     }
 }
@@ -443,47 +463,23 @@ private struct TextChoice<Value: Hashable>: View {
 private struct ChoiceWord: View {
     let label: String
     let isSelected: Bool
-    let showsFocus: Bool
     let action: () -> Void
     @State private var isHovering = false
 
     var body: some View {
         Text(label)
             .font(.notely(13))
-            .foregroundColor(isSelected ? .primaryText : (isHovering ? .secondaryText : .faintText))
-            .overlay(alignment: .bottom) {
-                underline
-                    .frame(height: 1.5)
-                    .offset(y: 4)
-                    .opacity(isSelected ? 1 : 0)
-            }
-            .animation(.easeOut(duration: 0.15), value: isSelected)
-            .padding(.vertical, 6)
+            .foregroundColor(isSelected || isHovering ? .primaryText : .tertiaryText)
+            .padding(.horizontal, 11)
+            .frame(height: 24)
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
             .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.15), value: isHovering)
             .accessibilityElement()
             .accessibilityLabel(label)
             .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
             .accessibilityAction { action() }
-    }
-
-    @ViewBuilder private var underline: some View {
-        if showsFocus {
-            Line()
-                .stroke(Color.accent, style: StrokeStyle(lineWidth: 1.5, dash: [2.5, 2]))
-        } else {
-            Rectangle().fill(Color.accent)
-        }
-    }
-
-    private struct Line: Shape {
-        func path(in rect: CGRect) -> Path {
-            Path { path in
-                path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-                path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-            }
-        }
     }
 }
 
