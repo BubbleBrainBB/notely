@@ -4,6 +4,8 @@ struct AppShellView: View {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
+    @AppStorage(AppSettings.wechatExtensionKey) private var wechatEnabled = false
+    @State private var detailWidth: CGFloat = 1200
 
     static let sidebarWidth: CGFloat = 240
     /// Gap between the editor's page and the window edges.
@@ -16,6 +18,29 @@ struct AppShellView: View {
     /// collapses/expands — the pane stays at or above the cap engagement point.
     private var detailMinWidth: CGFloat {
         WysiwygTextView.columnWidth(for: editorWidth) + WysiwygTextView.minSideInset * 2 + Self.pageInset * 2
+    }
+
+    /// The WeChat preview beside the page (Settings › Extensions; board ㊻ B).
+    private var showsWeChatPreview: Bool {
+        wechatEnabled && appModel.isWeChatPreviewOpen && appModel.selectedNoteId != nil && !appModel.showMemos
+    }
+
+    /// Too narrow for the page and the preview side by side: the preview
+    /// lies over the page's right side instead of squeezing the text.
+    private var previewOverlaps: Bool {
+        detailWidth < detailMinWidth + WeChatPreviewPane.width + Self.pageInset
+    }
+
+    private func previewSheet(_ shape: RoundedRectangle) -> some View {
+        WeChatPreviewPane()
+            .frame(width: WeChatPreviewPane.width)
+            .clipShape(shape)
+            .background {
+                shape.fill(Color.pageSheet)
+                    .shadow(color: .black.opacity(previewOverlaps ? 0.12 : 0.05), radius: previewOverlaps ? 16 : 1.5, y: 1)
+            }
+            .overlay { shape.strokeBorder(Color.pageEdge, lineWidth: 1).allowsHitTesting(false) }
+            .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
     var body: some View {
@@ -44,29 +69,37 @@ struct AppShellView: View {
                         // The page floats on the window ground (design board ㉘ D6):
                         // the title and toolbar icons sit on the ground above it,
                         // and the page, inset 8 on the other three sides, holds
-                        // only the text.
-                        Group {
-                            if appModel.showMemos {
-                                MemosView()
-                            } else if appModel.selectedNoteId == nil, let id = appModel.selectedFileId,
-                                      let file = store.files.first(where: { $0.id == id }) {
-                                FilePreviewView(file: file)
-                            } else {
-                                EditorContainerView()
+                        // only the text. The WeChat preview, when open, is a
+                        // second sheet to its right.
+                        HStack(spacing: Self.pageInset) {
+                            Group {
+                                if appModel.showMemos {
+                                    MemosView()
+                                } else if appModel.selectedNoteId == nil, let id = appModel.selectedFileId,
+                                          let file = store.files.first(where: { $0.id == id }) {
+                                    FilePreviewView(file: file)
+                                } else {
+                                    EditorContainerView()
+                                }
                             }
+                                .clipShape(pageShape)
+                                .background {
+                                    pageShape
+                                        .fill(framed ? Color.pageSheet : Color.editorBg)
+                                        .shadow(color: .black.opacity(framed ? 0.05 : 0), radius: 1.5, y: 1)
+                                        .shadow(color: .black.opacity(framed ? 0.04 : 0), radius: 8, y: 4)
+                                }
+                                .overlay {
+                                    pageShape
+                                        .strokeBorder(Color.pageEdge.opacity(framed ? 1 : 0), lineWidth: 1)
+                                        .allowsHitTesting(false)
+                                }
+                            if showsWeChatPreview && !previewOverlaps { previewSheet(pageShape) }
                         }
-                            .clipShape(pageShape)
-                            .background {
-                                pageShape
-                                    .fill(framed ? Color.pageSheet : Color.editorBg)
-                                    .shadow(color: .black.opacity(framed ? 0.05 : 0), radius: 1.5, y: 1)
-                                    .shadow(color: .black.opacity(framed ? 0.04 : 0), radius: 8, y: 4)
+                            .overlay(alignment: .trailing) {
+                                if showsWeChatPreview && previewOverlaps { previewSheet(pageShape) }
                             }
-                            .overlay {
-                                pageShape
-                                    .strokeBorder(Color.pageEdge.opacity(framed ? 1 : 0), lineWidth: 1)
-                                    .allowsHitTesting(false)
-                            }
+                            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { detailWidth = $0 }
                             // Opened from the welcome page, the page starts as the
                             // whole white window and settles into its frame.
                             .padding([.leading, .trailing, .bottom], framed ? Self.pageInset : 0)

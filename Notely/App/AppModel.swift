@@ -22,14 +22,15 @@ final class AppModel {
     var pageFrame = CGRect(x: 0, y: 0, width: 800, height: 600)
 
     /// The page's width less the toolbar's trailing icons (New Note, Info,
-    /// More — the same as with one page, so none overflows into »), Back and
+    /// More, and WeChat Preview when that extension is on — the same as with
+    /// one page, so none overflows into »), Back and
     /// Forward before the strip, and the traffic lights and sidebar toggle
     /// where the page reaches under them.
     /// Read from where the page actually is, not from the sidebar's state:
     /// that flips at once while the page is still sliding, and a strip that
     /// is too wide for one frame sends every toolbar item into » for good.
     var tabStripWidth: CGFloat {
-        pageFrame.width - 164 - 72 - max(0, 132 - pageFrame.minX)
+        pageFrame.width - 164 - 72 - (AppSettings.wechatExtension ? 44 : 0) - max(0, 132 - pageFrame.minX)
     }
 
     var activeIndex: Int { tabs.firstIndex { $0.id == activeTabId } ?? 0 }
@@ -69,6 +70,32 @@ final class AppModel {
         histories[activeTabId] = history
         // Straight to the tab, not through activeContent: that would record a visit.
         tabs[activeIndex].content = page
+    }
+
+    // MARK: - WeChat preview
+
+    /// The open note as the WeChat preview and Copy for WeChat see it.
+    struct NoteText: Equatable {
+        var noteId: String
+        var path: String
+        var markdown: String
+    }
+
+    /// Set by the editor when a note opens and once typing pauses; the
+    /// preview beside the page redraws from it.
+    var previewNote: NoteText?
+    /// The text as typed, for Copy for WeChat. Not observed, so a keystroke
+    /// redraws nothing.
+    @ObservationIgnored var typedNote: NoteText?
+
+    /// Tabs with the WeChat preview open beside the page.
+    private(set) var wechatPreviewTabs: Set<UUID> = []
+    var isWeChatPreviewOpen: Bool { wechatPreviewTabs.contains(activeTabId) }
+
+    func toggleWeChatPreview() {
+        withAnimation(.easeInOut(duration: 0.22)) {
+            if wechatPreviewTabs.remove(activeTabId) == nil { wechatPreviewTabs.insert(activeTabId) }
+        }
     }
 
     /// The note in the active tab. Setting nil turns it into a blank draft.
@@ -229,6 +256,7 @@ final class AppModel {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: index)
         histories[id] = nil
+        wechatPreviewTabs.remove(id)
         if tab.content != .draft {
             closedTabs.append(tab)
             if closedTabs.count > 30 { closedTabs.removeFirst() }

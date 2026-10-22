@@ -31,6 +31,9 @@ targets:
         excludes:
           - "Resources/**"
       - path: Notely/Resources/Assets.xcassets
+      # The WeChat Article extension's renderer and themes (Tools/wechat-renderer).
+      - path: Notely/Resources/WeChat
+        type: folder
     info:
       path: Notely/Info.plist
       properties:

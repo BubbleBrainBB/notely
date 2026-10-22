@@ -81,6 +81,7 @@ struct AppCommands: Commands {
     @FocusedValue(\.noteStore) private var store
     @FocusedValue(\.appModel) private var appModel
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(AppSettings.wechatExtensionKey) private var wechatEnabled = false
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -146,6 +147,21 @@ struct AppCommands: Commands {
                 NoteExporter.exportAll(store.notes)
             }
             .disabled(store == nil)
+            // The WeChat Article extension (Settings › Extensions).
+            if wechatEnabled {
+                Divider()
+                Button(appModel?.isWeChatPreviewOpen == true ? "Hide WeChat Preview" : "Show WeChat Preview") {
+                    appModel?.toggleWeChatPreview()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .control])
+                .disabled(appModel?.selectedNoteId == nil)
+                Button("Copy for WeChat") {
+                    guard let appModel else { return }
+                    Task { await WeChatCopy.copyOrShowWhy(appModel) }
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(appModel?.selectedNoteId == nil)
+            }
         }
 
         CommandGroup(replacing: .appSettings) {

@@ -27,6 +27,8 @@ enum ShiyeGlyph {
     case info
     /// Three dots: more actions.
     case more
+    /// A phone: the WeChat article preview beside the page.
+    case phone
     /// A chevron pointing left: back to the page before.
     case back
     /// A chevron pointing right: forward again.
@@ -147,6 +149,10 @@ enum ShiyeGlyph {
             line(&path, (12, 11), (12, 16.5))
             // A stroke this short draws as a round dot.
             line(&path, (12, 7.6), (12, 7.65))
+
+        case .phone:
+            roundedRect(&path, 6.5, 2.5, 11, 19, 2.5)
+            line(&path, (10.5, 18.5), (13.5, 18.5))
 
         case .back:
             line(&path, (14.5, 6), (8.5, 12), (14.5, 18))

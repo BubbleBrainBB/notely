@@ -29,6 +29,14 @@ enum AppSettings {
     static let includeFrontmatterKey = "notely.includeFrontmatter"
     static let preserveTagsKey = "notely.preserveTags"
     static let imageHandlingKey = "notely.imageHandling"
+    /// Extensions (Settings › Extensions), each off until turned on.
+    static let wechatExtensionKey = "notely.extensions.wechat"
+    static let wechatThemeKey = "notely.wechat.theme"
+
+    static var wechatExtension: Bool {
+        get { UserDefaults.standard.bool(forKey: wechatExtensionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: wechatExtensionKey) }
+    }
 
     static var theme: String {
         get { UserDefaults.standard.string(forKey: themeKey) ?? "system" }

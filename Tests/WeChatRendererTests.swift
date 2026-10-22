@@ -1,0 +1,101 @@
+import Foundation
+
+// Standalone test runner for WeChatRenderer: the bundled renderer, run in
+// JavaScriptCore, must write exactly what the wechat-black-red skill's own
+// `node render.mjs` writes, in every theme — and, its one addition, accept
+// bold beside Chinese punctuation.
+//
+//     swiftc Notely/Services/WeChatRenderer.swift Tests/WeChatRendererTests.swift -o /tmp/wechat-tests
+//     /tmp/wechat-tests [path/to/skills/wechat-black-red]
+//
+// Needs node and the skill; without them the comparison is skipped.
+// Exits non-zero if any assertion fails.
+
+@main
+enum WeChatRendererTests {
+    static var failures = 0
+    static var checks = 0
+
+    static func expect<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
+        checks += 1
+        if actual != expected {
+            failures += 1
+            print("FAIL: \(message)\n  expected: \(String(describing: expected).prefix(300))\n  actual:   \(String(describing: actual).prefix(300))")
+        }
+    }
+
+    static func run(_ arguments: [String]) -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
+    static func main() throws {
+        let repo = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let renderer = try WeChatRenderer(folder: repo.appendingPathComponent("Notely/Resources/WeChat"))
+
+        // ── Basics ──
+        let article = try renderer.render(markdown: "# Title\n\nHello **world**.\n\n## Part\n\n> quote",
+                                          notePath: "/tmp/note.md", theme: .blackRed)
+        expect(article.title, "Title", "leading H1 becomes the title")
+        expect(article.html.contains("<h1"), false, "the title is not in the body")
+        expect(article.html.contains("color:#8f1d22;font-weight:700;\">world</strong>"), true, "bold in the theme's red")
+        expect(article.html.contains("class="), false, "no classes: WeChat drops them")
+        expect(try renderer.render(markdown: "Body", notePath: "/tmp/My Note.md", theme: .blueprint).title,
+               "My Note", "no H1: the file name")
+        do {
+            _ = try renderer.render(markdown: "![x](missing.png)", notePath: "/tmp/note.md", theme: .blackRed)
+            expect(false, true, "a missing local image is an error")
+        } catch {
+            expect(error.localizedDescription.contains("图片文件不存在"), true, "the renderer's own message")
+        }
+
+        // ── Bold beside Chinese punctuation (markdown-it-cjk-friendly) ──
+        for markdown in ["这是**“重点”**内容", "这是**重点。**然后", "**最后统一决定。**", "这是**重点**然后", "（**括号里**）"] {
+            let html = try renderer.render(markdown: markdown, notePath: "/tmp/note.md", theme: .blueprint).html
+            expect(html.contains("<strong"), true, "bold: \(markdown)")
+        }
+        let spaced = try renderer.render(markdown: "**最后统一决定。 **", notePath: "/tmp/note.md", theme: .blueprint).html
+        expect(spaced.contains("<strong"), false, "a space before the closing ** is still not bold")
+        expect(try renderer.render(markdown: "2 * 3 * 4", notePath: "/tmp/note.md", theme: .blueprint).html.contains("<em"),
+               false, "spaced asterisks stay literal")
+
+        // ── Same output as the skill ──
+        let skill = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
+            ?? NSString(string: "~/wechat-markdown-note/skills/wechat-black-red").expandingTildeInPath)
+        let examples = ["assets/example.md", "assets/blueprint-example.md", "assets/songti-example.md",
+                        "assets/motion-journal-example.md"]
+        if FileManager.default.fileExists(atPath: skill.appendingPathComponent("scripts/render.mjs").path) {
+            let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("wechat-tests-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: scratch) }
+            for theme in WeChatRenderer.Theme.allCases {
+                for example in examples {
+                    let input = skill.appendingPathComponent(example)
+                    let out = scratch.appendingPathComponent("\(theme.rawValue)-\(input.lastPathComponent)")
+                    let status = run(["node", skill.appendingPathComponent("scripts/render.mjs").path,
+                                      "--input", input.path, "--out-dir", out.path, "--theme", theme.rawValue])
+                    guard status == 0 else { expect(status, 0, "node render \(example) \(theme)"); continue }
+                    let expected = try String(contentsOf: out.appendingPathComponent("article.html"), encoding: .utf8)
+                    let title = try String(contentsOf: out.appendingPathComponent("title.txt"), encoding: .utf8)
+                    let markdown = try String(contentsOf: input, encoding: .utf8)
+                    let ours = try renderer.render(markdown: markdown, notePath: input.resolvingSymlinksInPath().path, theme: theme)
+                    expect(ours.html, expected, "\(example) in \(theme.rawValue) matches render.mjs")
+                    expect(ours.title + "\n", title, "\(example) title in \(theme.rawValue)")
+                }
+            }
+        } else {
+            print("Skipped the render.mjs comparison: no skill at \(skill.path)")
+        }
+
+        if failures == 0 {
+            print("All \(checks) WeChatRenderer checks passed.")
+        } else {
+            print("\(failures) of \(checks) WeChatRenderer checks failed.")
+            exit(1)
+        }
+    }
+}

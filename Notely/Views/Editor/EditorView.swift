@@ -123,6 +123,7 @@ struct EditorView: View {
         textRevision += 1
         lastSyncedContent = note.content
         updateCounts(from: note.content)
+        publishPreview(note.content)
     }
 
     /// Reconcile an on-disk change to the currently open note with the editor.
@@ -137,6 +138,7 @@ struct EditorView: View {
             textRevision += 1
             lastSyncedContent = newContent
             updateCounts(from: newContent)
+            publishPreview(newContent)
         case .keepLocal:
             break
         }
@@ -147,6 +149,7 @@ struct EditorView: View {
     /// pauses, so a keystroke never redraws them.
     private func handleTextChange(_ newText: String) {
         live.text = newText
+        appModel.typedNote = noteText(newText)
         scheduleSave(newText)
         catchUpTask?.cancel()
         catchUpTask = Task {
@@ -154,7 +157,19 @@ struct EditorView: View {
             guard !Task.isCancelled else { return }
             displayedText = newText
             updateCounts(from: newText)
+            publishPreview(newText)
         }
+    }
+
+    private func noteText(_ markdown: String) -> AppModel.NoteText {
+        AppModel.NoteText(noteId: note.id, path: note.url.path, markdown: markdown)
+    }
+
+    /// Feeds the WeChat preview beside the page (and Copy for WeChat).
+    private func publishPreview(_ markdown: String) {
+        let text = noteText(markdown)
+        appModel.typedNote = text
+        if appModel.previewNote != text { appModel.previewNote = text }
     }
 
     private func updateCounts(from text: String) {
@@ -215,6 +230,7 @@ struct NoteToolbar: ViewModifier {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
     @State private var showsInfo = false
+    @AppStorage(AppSettings.wechatExtensionKey) private var wechatEnabled = false
 
     /// The file name: notes are files, and clipped articles often have no
     /// heading, so their first line makes a poor title.
@@ -242,6 +258,26 @@ struct NoteToolbar: ViewModifier {
                 // capsule turned off — the same treatment as the sidebar
                 // toggle, so the page's corner holds plain icons, not a pill.
                 // The same icons with one page or several.
+                if note != nil, wechatEnabled {
+                    FlatToolbarItem {
+                        Button {
+                            appModel.toggleWeChatPreview()
+                        } label: {
+                            Label {
+                                Text("WeChat Preview")
+                            } icon: {
+                                // In the accent while open, like a switch that's on.
+                                if appModel.isWeChatPreviewOpen {
+                                    Image(nsImage: ShiyeGlyph.phone.templateImage()).foregroundStyle(Color.accent)
+                                } else {
+                                    Image(nsImage: ShiyeGlyph.phone.templateImage())
+                                }
+                            }
+                        }
+                        .help(appModel.isWeChatPreviewOpen ? "Hide WeChat Preview (⌃⌘P)" : "WeChat Preview (⌃⌘P)")
+                    }
+                }
+
                 FlatToolbarItem {
                     Button {
                         appModel.newTab()
@@ -277,6 +313,12 @@ struct NoteToolbar: ViewModifier {
                             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
                             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
                             Button("Export as PDF…") { onExportPDF?() }
+                            if wechatEnabled {
+                                Button(appModel.isWeChatPreviewOpen ? "Hide WeChat Preview" : "WeChat Preview") {
+                                    appModel.toggleWeChatPreview()
+                                }
+                                Button("Copy for WeChat") { Task { await WeChatCopy.copyOrShowWhy(appModel) } }
+                            }
                             Divider()
                             Button("Delete", role: .destructive) {
                                 appModel.removeTabs(showing: .note(note.id))

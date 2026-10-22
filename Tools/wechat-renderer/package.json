@@ -1,0 +1,9 @@
+{
+  "name": "notely-wechat-renderer",
+  "private": true,
+  "description": "Build inputs for Notely's bundled copy of the wechat-black-red renderer (see build.mjs).",
+  "type": "module",
+  "dependencies": {
+    "markdown-it-cjk-friendly": "3.0.0"
+  }
+}

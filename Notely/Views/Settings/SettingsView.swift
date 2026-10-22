@@ -17,7 +17,7 @@ final class SettingsTabState {
 }
 
 enum SettingsPage {
-    case settings, shortcuts
+    case settings, shortcuts, extensions
 }
 
 // MARK: - Modal
@@ -50,10 +50,14 @@ struct SettingsModal: View {
         ZStack(alignment: .top) {
             switch state.page {
             case .settings:
-                SettingsPageView(maxHeight: maxHeight, close: close) { show(.shortcuts) }
+                SettingsPageView(maxHeight: maxHeight, close: close,
+                                 showShortcuts: { show(.shortcuts) }, showExtensions: { show(.extensions) })
                     .transition(.move(edge: .leading).combined(with: .opacity))
             case .shortcuts:
                 ShortcutsPageView(maxHeight: maxHeight) { show(.settings) }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            case .extensions:
+                ExtensionsPageView(maxHeight: maxHeight) { show(.settings) }
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -196,6 +200,7 @@ private struct SettingsPageView: View {
     let maxHeight: CGFloat
     let close: () -> Void
     let showShortcuts: () -> Void
+    let showExtensions: () -> Void
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -217,15 +222,17 @@ private struct SettingsPageView: View {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsSection(title: "Look", labelTop: 19) { LookSettings() }
                 SettingsSection(title: "Writing", labelTop: 12) { WritingSettings() }
-                SettingsSection(title: "Library", labelTop: 10, isLast: true) { LibrarySettings() }
-                HStack(alignment: .firstTextBaseline) {
-                    SettingsLink(title: "Keyboard shortcuts →", size: 12, action: showShortcuts)
-                    Spacer()
-                    Text("Notely \(version)")
-                        .font(.notely(12))
-                        .foregroundColor(.faintIcon)
+                SettingsSection(title: "Library", labelTop: 10) { LibrarySettings() }
+                // The sheet's other pages, as rows (design board ㊼ B).
+                SettingsSection(title: "More", labelTop: 12, isLast: true) {
+                    PageRow(title: "Extensions", status: ExtensionsSettings.summary, action: showExtensions)
+                    PageRow(title: "Keyboard shortcuts", isLast: true, action: showShortcuts)
                 }
-                .padding(.top, 20)
+                Text("Notely \(version)")
+                    .font(.notely(12))
+                    .foregroundColor(.faintIcon)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 20)
             }
         }
     }
@@ -248,6 +255,78 @@ private struct ShortcutsPageView: View {
             .padding(.bottom, 14)
         } content: {
             ShortcutsSettings()
+        }
+    }
+}
+
+/// Optional tools, each off until turned on (design board ㊹): a page of
+/// the sheet like Keyboard Shortcuts, reached from the sheet's foot.
+private struct ExtensionsPageView: View {
+    let maxHeight: CGFloat
+    let back: () -> Void
+
+    var body: some View {
+        SheetPage(maxHeight: maxHeight, topPadding: 26) {
+            VStack(alignment: .leading, spacing: 6) {
+                SettingsLink(title: "← Settings", size: 12, action: back)
+                Text("Extensions")
+                    .font(.system(size: 20, weight: .semibold, design: .serif))
+                    .foregroundColor(.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                Text("Tools for some kinds of writing. Turn on the ones you use; the rest stay out of the menus.")
+                    .font(.notely(12.5))
+                    .foregroundColor(.faintText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 14)
+        } content: {
+            VStack(alignment: .leading, spacing: 0) {
+                ExtensionsSettings()
+                Text("Extensions are part of Notely; nothing is downloaded.")
+                    .font(.notely(12))
+                    .foregroundColor(.faintIcon)
+                    .padding(.top, 20)
+            }
+        }
+    }
+}
+
+private struct ExtensionsSettings: View {
+    /// What's on, for the row that leads here.
+    static var summary: String {
+        AppSettings.wechatExtension ? "WeChat Article on" : "None on"
+    }
+
+    @AppStorage(AppSettings.wechatExtensionKey) private var wechat = false
+    @AppStorage(AppSettings.wechatThemeKey) private var theme = WeChatRenderer.Theme.blackRed.rawValue
+
+    var body: some View {
+        SettingsSection(title: "Publish", labelTop: 14, isLast: true) {
+            SettingRow(title: "WeChat Article", detail: "Lay a note out for the WeChat Official Account editor.") {
+                OnOffChoice(isOn: $wechat.animation(.easeInOut(duration: 0.2)), label: "WeChat Article")
+            }
+            if wechat {
+                VStack(spacing: 0) {
+                    SettingRow(title: "Theme") {
+                        TextChoice(options: WeChatRenderer.Theme.allCases.map { ($0.name, $0.rawValue) },
+                                   selection: $theme, accessibilityLabel: "WeChat theme")
+                    }
+                    SettingRow(title: "Shortcuts") {
+                        Text("Preview ⌃⌘P   Copy ⌥⌘C")
+                            .font(.notely(12.5))
+                            .foregroundColor(.faintText)
+                    }
+                }
+                .padding(.leading, 16)
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.settingsRowLine).frame(height: 1) }
+                .transition(.opacity)
+            }
+            SettingRow(title: "Xiaohongshu Cards", detail: "Turn a note into 3:4 image cards.", isLast: true) {
+                Text("Coming later")
+                    .font(.notely(12))
+                    .foregroundColor(.faintIcon)
+            }
         }
     }
 }
@@ -405,6 +484,39 @@ private struct ChoiceWord: View {
                 path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
             }
         }
+    }
+}
+
+/// A row that opens another page of the sheet: its name, what's there, ›.
+/// The whole row is the button; under the pointer the status and › darken.
+private struct PageRow: View {
+    let title: String
+    var status: String? = nil
+    var isLast = false
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            SettingRow(title: title, isLast: isLast) {
+                HStack(spacing: 10) {
+                    if let status {
+                        Text(status)
+                            .font(.notely(12.5))
+                            .foregroundColor(isHovering ? .secondaryText : .faintText)
+                    }
+                    Text("›")
+                        .font(.notely(15))
+                        .foregroundColor(isHovering ? .secondaryText : .faintIcon)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: isHovering)
+        .accessibilityLabel(status.map { "\(title), \($0)" } ?? title)
     }
 }
 
@@ -904,6 +1016,8 @@ private struct ShortcutsSettings: View {
             ("Open Folder…", "⌘O"),
             ("Search Notes", "⇧⌘F"),
             ("Toggle Sidebar", "⌥⌘S"),
+            ("Back", "⌘["),
+            ("Forward", "⌘]"),
             ("Settings", "⌘,"),
         ]),
         ("Tabs", [

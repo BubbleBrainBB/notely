@@ -1,0 +1,92 @@
+// Bundles the wechat-black-red skill's renderer into one script Notely runs
+// in JavaScriptCore, and copies its themes and licenses beside it.
+//
+//     node Tools/wechat-renderer/build.mjs [path/to/skills/wechat-black-red]
+//
+// esbuild comes from the skill's own repository (its node_modules); the
+// one addition, markdown-it-cjk-friendly, from this folder's (npm install).
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repo = path.resolve(here, '../..');
+const skill = path.resolve(process.argv[2] || path.join(process.env.HOME, 'wechat-markdown-note/skills/wechat-black-red'));
+const out = path.join(repo, 'Notely/Resources/WeChat');
+const require = createRequire(path.join(skill, '../../package.json'));
+const esbuild = require('esbuild');
+
+const shims = { fs: 'fs.mjs', path: 'path.mjs', crypto: 'crypto.mjs', url: 'url.mjs', module: 'module.mjs' };
+const nodeShims = {
+  name: 'notely-node-shims',
+  setup(build) {
+    build.onResolve({ filter: /^node:/ }, args => {
+      const file = shims[args.path.slice(5)];
+      if (!file) throw new Error(`No shim for ${args.path}`);
+      return { path: path.join(here, 'shims', file) };
+    });
+  },
+};
+
+// The skill's markdown-it gets markdown-it-cjk-friendly, so bold and italic
+// beside Chinese punctuation (这是**“重点”**内容) render as the editor shows
+// them. The skill's files stay as they are: its scripts import this wrapper
+// in place of vendor/parsers.mjs.
+const parsers = path.join(skill, 'vendor/parsers.mjs');
+const cjkFriendly = {
+  name: 'notely-cjk-friendly',
+  setup(build) {
+    build.onResolve({ filter: /vendor\/parsers\.mjs$/ }, args =>
+      args.namespace === 'notely' ? undefined : { path: 'parsers', namespace: 'notely' });
+    build.onLoad({ filter: /.*/, namespace: 'notely' }, () => ({
+      contents: `import { MarkdownIt as Base, parseYaml } from ${JSON.stringify(parsers)};
+import cjkFriendly from 'markdown-it-cjk-friendly';
+export function MarkdownIt(options) { return new Base(options).use(cjkFriendly); }
+export { parseYaml };`,
+      resolveDir: here,
+    }));
+  },
+};
+
+await esbuild.build({
+  stdin: {
+    contents: `import { renderArticle } from ${JSON.stringify(path.join(skill, 'scripts/render.mjs'))};
+globalThis.NotelyWeChat = {
+  render(markdown, options) {
+    const { html, title, report } = renderArticle(markdown, options);
+    return JSON.stringify({ html, title, warnings: report.warnings, images: report.images.length, videos: report.videos.length });
+  },
+};`,
+    resolveDir: here,
+    loader: 'js',
+  },
+  bundle: true,
+  format: 'iife',
+  platform: 'neutral',
+  target: 'safari16',
+  banner: { js: fs.readFileSync(path.join(here, 'globals.js'), 'utf8') },
+  plugins: [nodeShims, cjkFriendly],
+  outfile: path.join(out, 'wechat-render.js'),
+  logLevel: 'warning',
+  // render.mjs reads import.meta only to find itself (shimmed in url.mjs).
+  logOverride: { 'empty-import-meta': 'silent' },
+});
+
+for (const file of ['assets/theme.json', 'assets/themes/blueprint.json', 'assets/themes/songti-supplement.json',
+                    'assets/themes/motion-journal.json', 'vendor/THIRD_PARTY_LICENSES.txt']) {
+  const target = path.join(out, file);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.copyFileSync(path.join(skill, file), target);
+}
+// Licenses of what Notely adds to the skill's bundle.
+const added = ['markdown-it-cjk-friendly', 'get-east-asian-width'].map(name => {
+  const folder = path.join(here, 'node_modules', name);
+  const license = fs.readdirSync(folder).find(file => /^licen[cs]e/i.test(file));
+  return `${name}\n${'='.repeat(name.length)}\n\n${fs.readFileSync(path.join(folder, license), 'utf8').trim()}\n`;
+});
+fs.writeFileSync(path.join(out, 'vendor/NOTELY_ADDED_LICENSES.txt'), added.join('\n'));
+const version = JSON.parse(fs.readFileSync(path.join(skill, 'assets/theme.json'), 'utf8')).version;
+fs.writeFileSync(path.join(out, 'SOURCE.txt'),
+  `Bundled from the wechat-black-red skill (black-red theme ${version}).\nRebuild with: node Tools/wechat-renderer/build.mjs\n`);
+console.log(`Wrote ${path.relative(repo, out)}`);
