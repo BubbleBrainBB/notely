@@ -10,7 +10,7 @@
     "h4": "font-family:'Songti SC','STSong','SimSun','Noto Serif CJK SC',serif;margin:26px 0 14px;color:#38352f;font-size:17px;line-height:1.6;font-weight:600;",
     "h5": "margin:24px 0 12px;color:#38352f;font-size:15px;line-height:1.6;font-weight:700;",
     "h6": "margin:22px 0 12px;color:#827a70;font-size:15px;line-height:1.6;font-weight:600;",
-    "strong": "color:#242420;font-weight:700;",
+    "strong": "color:#bd3038;font-weight:700;",
     "em": "color:#827a70;font-style:italic;",
     "link": "color:#bd3038;text-decoration:none;border-bottom:1px solid #bd3038;padding-bottom:1px;overflow-wrap:anywhere;",
     "underline": "border-bottom:2px solid #dbaab0;padding-bottom:1px;color:#30302c;font-weight:600;",
