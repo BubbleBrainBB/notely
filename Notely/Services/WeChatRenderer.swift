@@ -77,7 +77,7 @@ final class WeChatRenderer {
         try queue.sync {
             context.exception = nil
             let options: [String: Any] = ["inputPath": notePath, "theme": theme.rawValue]
-            let result = renderFunction.call(withArguments: [markdown, options])
+            let result = renderFunction.call(withArguments: [Self.separatingEmbeds(markdown), options])
             if let exception = context.exception {
                 context.exception = nil
                 let message = exception.objectForKeyedSubscript("message")?.toString() ?? exception.toString() ?? ""
@@ -91,6 +91,39 @@ final class WeChatRenderer {
             return Article(html: html, title: object["title"] as? String ?? "",
                            warnings: object["warnings"] as? [String] ?? [])
         }
+    }
+
+    // MARK: - Embeds
+
+    private static let embedLine = try! NSRegularExpression(pattern: #"^!\[[^\]\n]*\]\([^)\n]*\)$"#)
+
+    /// `markdown` with a blank line before and after each line that holds
+    /// only an image or video. The editor shows such a line as a block of
+    /// its own even with text right under it; Markdown would run the two
+    /// into one paragraph, and the renderer turns a video into its
+    /// placeholder card only when it stands alone. Indented lines (inside a
+    /// list) and fenced code stay as they are.
+    static func separatingEmbeds(_ markdown: String) -> String {
+        var lines: [String] = []
+        var fence: String?
+        var afterEmbed = false
+        for line in markdown.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let isBlank = trimmed.isEmpty
+            if afterEmbed, !isBlank { lines.append("") }
+            afterEmbed = false
+            if let open = fence {
+                if trimmed.hasPrefix(open) { fence = nil }
+            } else if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                fence = String(trimmed.prefix(3))
+            } else if !line.hasPrefix(" "), !line.hasPrefix("\t"),
+                      embedLine.firstMatch(in: trimmed, range: NSRange(location: 0, length: (trimmed as NSString).length)) != nil {
+                if let last = lines.last, !last.trimmingCharacters(in: .whitespaces).isEmpty { lines.append("") }
+                afterEmbed = true
+            }
+            lines.append(line)
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - Host

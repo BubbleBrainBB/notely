@@ -64,6 +64,20 @@ enum WeChatRendererTests {
         expect(try renderer.render(markdown: "2 * 3 * 4", notePath: "/tmp/note.md", theme: .blueprint).html.contains("<em"),
                false, "spaced asterisks stay literal")
 
+        // ── A video or image alone on its line, text right under it ──
+        expect(WeChatRenderer.separatingEmbeds("Intro:\n![](a.mp4)\nNext line"), "Intro:\n\n![](a.mp4)\n\nNext line",
+               "blank lines around a lone embed")
+        expect(WeChatRenderer.separatingEmbeds("![](a.mp4)\n\nNext"), "![](a.mp4)\n\nNext", "already apart: unchanged")
+        expect(WeChatRenderer.separatingEmbeds("Text ![](a.png) inline\nmore"), "Text ![](a.png) inline\nmore",
+               "an image inside a sentence stays inline")
+        expect(WeChatRenderer.separatingEmbeds("```\n![](a.mp4)\nx\n```"), "```\n![](a.mp4)\nx\n```", "code stays as is")
+        expect(WeChatRenderer.separatingEmbeds("- item\n  ![](a.png)\n  more"), "- item\n  ![](a.png)\n  more",
+               "inside a list stays as is")
+        let video = try renderer.render(markdown: "还有一个：\n![](https://example.com/turbofan.mp4)\n还有一个是台灯：",
+                                        notePath: "/tmp/note.md", theme: .blueprint)
+        expect(video.html.contains("在此插入视频"), true, "the video becomes its placeholder card")
+        expect(video.html.contains("还有一个是台灯"), true, "the next line stays")
+
         // ── Same output as the skill ──
         let skill = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
             ?? NSString(string: "~/wechat-markdown-note/skills/wechat-black-red").expandingTildeInPath)
