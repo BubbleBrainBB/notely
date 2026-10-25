@@ -5,6 +5,7 @@ struct AppShellView: View {
     @Environment(FileNoteStore.self) var store
     @AppStorage("notely.editorWidth") private var editorWidth: String = "medium"
     @AppStorage(AppSettings.wechatExtensionKey) private var wechatEnabled = false
+    @AppStorage(AppSettings.xhsExtensionKey) private var xhsEnabled = false
     @State private var detailWidth: CGFloat = 1200
 
     static let sidebarWidth: CGFloat = 240
@@ -20,20 +21,21 @@ struct AppShellView: View {
         WysiwygTextView.columnWidth(for: editorWidth) + WysiwygTextView.minSideInset * 2 + Self.pageInset * 2
     }
 
-    /// The WeChat preview beside the page (Settings › Extensions; board ㊻ B).
+    /// The publish preview beside the page — WeChat or Xiaohongshu
+    /// (Settings › Extensions; boards ㊻ B, ㊾).
     private var showsWeChatPreview: Bool {
-        wechatEnabled && appModel.isWeChatPreviewOpen && appModel.selectedNoteId != nil && !appModel.showMemos
+        (wechatEnabled || xhsEnabled) && appModel.isPublishPreviewOpen && appModel.selectedNoteId != nil && !appModel.showMemos
     }
 
     /// Too narrow for the page and the preview side by side: the preview
     /// lies over the page's right side instead of squeezing the text.
     private var previewOverlaps: Bool {
-        detailWidth < detailMinWidth + WeChatPreviewPane.width + Self.pageInset
+        detailWidth < detailMinWidth + PublishPreviewPane.width + Self.pageInset
     }
 
     private func previewSheet(_ shape: RoundedRectangle) -> some View {
-        WeChatPreviewPane()
-            .frame(width: WeChatPreviewPane.width)
+        PublishPreviewPane()
+            .frame(width: PublishPreviewPane.width)
             .clipShape(shape)
             .background {
                 shape.fill(Color.pageSheet)

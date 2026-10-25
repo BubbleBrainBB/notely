@@ -1,6 +1,7 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Settings as one sheet of paper over the dimmed window (design board ㊶,
 // direction ㊵ A): read top to bottom — Look, Writing, Library — with the
@@ -295,11 +296,17 @@ private struct ExtensionsPageView: View {
 private struct ExtensionsSettings: View {
     /// What's on, for the row that leads here.
     static var summary: String {
-        AppSettings.wechatExtension ? "WeChat Article on" : "None on"
+        switch (AppSettings.wechatExtension, AppSettings.xhsExtension) {
+        case (true, true): "WeChat Article, Xiaohongshu Cards on"
+        case (true, false): "WeChat Article on"
+        case (false, true): "Xiaohongshu Cards on"
+        case (false, false): "None on"
+        }
     }
 
     @AppStorage(AppSettings.wechatExtensionKey) private var wechat = false
     @AppStorage(AppSettings.wechatThemeKey) private var theme = WeChatRenderer.Theme.blackRed.rawValue
+    @AppStorage(AppSettings.xhsExtensionKey) private var xhs = false
 
     var body: some View {
         SettingsSection(title: "Publish", labelTop: 14, isLast: true) {
@@ -322,12 +329,143 @@ private struct ExtensionsSettings: View {
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.settingsRowLine).frame(height: 1) }
                 .transition(.opacity)
             }
-            SettingRow(title: "Xiaohongshu Cards", detail: "Turn a note into 3:4 image cards.", isLast: true) {
-                Text("Coming later")
-                    .font(.notely(12))
-                    .foregroundColor(.faintIcon)
+            SettingRow(title: "Xiaohongshu Cards", detail: "Turn a note into image cards and a caption for Xiaohongshu.",
+                       isLast: !xhs) {
+                OnOffChoice(isOn: $xhs.animation(.easeInOut(duration: 0.2)), label: "Xiaohongshu Cards")
+            }
+            if xhs {
+                XhsSettings()
+                    .padding(.leading, 16)
+                    .transition(.opacity)
             }
         }
+    }
+}
+
+/// Xiaohongshu Cards' defaults (board ㊾ ⑤). The preview may choose another
+/// template or size for one note; that stays with the note.
+private struct XhsSettings: View {
+    @AppStorage(AppSettings.xhsTemplateKey) private var template = XhsCards.Template.memo.rawValue
+    @AppStorage(AppSettings.xhsRatioKey) private var ratio = XhsCards.Ratio.portrait.rawValue
+    @AppStorage(AppSettings.xhsPageNumbersKey) private var pageNumbers = true
+    @AppStorage(AppSettings.xhsNameKey) private var name = ""
+    @AppStorage(AppSettings.xhsHandleKey) private var handle = ""
+    @AppStorage(AppSettings.xhsAvatarKey) private var avatar = ""
+    @AppStorage(AppSettings.xhsEndCardKey) private var endCard = false
+    @AppStorage(AppSettings.xhsEndLineKey) private var endLine = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingRow(title: "Template") {
+                TextChoice(options: XhsCards.Template.allCases.map { ($0.name, $0.rawValue) },
+                           selection: $template, accessibilityLabel: "Xiaohongshu template")
+            }
+            SettingRow(title: "Size") {
+                TextChoice(options: XhsCards.Ratio.allCases.map { ($0.rawValue, $0.rawValue) },
+                           selection: $ratio, accessibilityLabel: "Card size")
+            }
+            SettingRow(title: "Avatar", detail: "For the Post template.") {
+                HStack(spacing: 10) {
+                    AvatarDot(path: avatar, name: name)
+                    if !avatar.isEmpty {
+                        SettingsLink(title: "Remove") { removeAvatar() }
+                    }
+                    SettingsLink(title: "Choose…", isPrimary: true) { chooseAvatar() }
+                }
+            }
+            SettingRow(title: "Name") {
+                SettingsTextField(placeholder: NSFullUserName(), text: $name)
+            }
+            SettingRow(title: "Handle", detail: "On every card's foot; empty leaves it off.") {
+                SettingsTextField(placeholder: "@name", text: $handle)
+            }
+            SettingRow(title: "Page numbers") {
+                OnOffChoice(isOn: $pageNumbers, label: "Page numbers")
+            }
+            SettingRow(title: "End card", detail: "A last card with your name and one line.") {
+                OnOffChoice(isOn: $endCard.animation(.easeInOut(duration: 0.2)), label: "End card")
+            }
+            if endCard {
+                SettingRow(title: "End card line") {
+                    SettingsTextField(placeholder: "One line to close with", text: $endLine, width: 220)
+                }
+            }
+            SettingRow(title: "Shortcuts", isLast: true) {
+                Text("Preview ⌃⌘P   Add to Photos ⌥⌘C")
+                    .font(.notely(12.5))
+                    .foregroundColor(.faintText)
+            }
+        }
+    }
+
+    /// The picture is copied into Notely's own folder, so moving or
+    /// deleting the original doesn't take it off the cards.
+    private func chooseAvatar() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .webP, .tiff]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a picture for your avatar on Post cards."
+        guard panel.runModal() == .OK, let source = panel.url,
+              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let folder = support.appendingPathComponent("Notely", isDirectory: true)
+        let target = folder.appendingPathComponent("xhs-avatar-\(Int(Date().timeIntervalSince1970)).\(source.pathExtension.lowercased())")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: source, to: target)
+            removeAvatar()
+            avatar = target.path
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func removeAvatar() {
+        if !avatar.isEmpty { try? FileManager.default.removeItem(atPath: avatar) }
+        avatar = ""
+    }
+}
+
+/// The avatar as the Post template shows it: the picture, or the name's
+/// first letter on a quiet circle.
+private struct AvatarDot: View {
+    let path: String
+    let name: String
+
+    var body: some View {
+        Group {
+            if !path.isEmpty, let image = NSImage(contentsOfFile: path) {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                Text(String((name.isEmpty ? NSFullUserName() : name).prefix(1)).uppercased())
+                    .font(.notely(11, weight: .semibold))
+                    .foregroundColor(Color(nsColor: .adaptive(light: 0x6B6457, dark: 0xC9C9C6)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .adaptive(light: 0xE4DFD4, dark: 0x34363B)))
+            }
+        }
+        .frame(width: 24, height: 24)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+}
+
+/// A plain text field on the sheet: a hairline box, the text in the
+/// sheet's type.
+private struct SettingsTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var width: CGFloat = 160
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain)
+            .font(.notely(12.5))
+            .foregroundColor(.primaryText)
+            .padding(.horizontal, 8)
+            .frame(width: width, height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primaryText.opacity(0.03)))
+            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.primaryText.opacity(0.12), lineWidth: 1))
+            .accessibilityLabel(placeholder)
     }
 }
 

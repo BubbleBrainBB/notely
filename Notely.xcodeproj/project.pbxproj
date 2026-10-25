@@ -26,30 +26,34 @@
 		51E25C4CA0FD5BEDFB718359 /* LinkRewrite.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02E74CD2E4CC0B8532F2FAF8 /* LinkRewrite.swift */; };
 		629F37287A9E1C3EB743CCC8 /* MemoText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71147678FE2A21B62801107B /* MemoText.swift */; };
 		639C07933C4651EDDEC15D43 /* CursorMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4B1D321F46BA6115D4DF921 /* CursorMapping.swift */; };
+		69B1F3996A0665B60E0F6C7B /* QuietScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85FA9BF18A9E4B93D1A20F2B /* QuietScroller.swift */; };
 		6AC7EC19D22E8CD86E25E468 /* SidebarWidthPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2495FCAE3556EDC081870262 /* SidebarWidthPolicy.swift */; };
+		6B2435C5734242C8F5BEF80D /* WeChat in Resources */ = {isa = PBXBuildFile; fileRef = 9A440F59787ECC30104DDBC0 /* WeChat */; };
 		6C33E266DBC8945596F799B7 /* OutlineSectionPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69E05CB6F22B4D042DD09D45 /* OutlineSectionPreview.swift */; };
 		73E9A7FD99DEA3EC14C4B6A8 /* TagExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68CA4E783C0848DB5608663A /* TagExtractor.swift */; };
 		746C69866F6F757204DBE7C0 /* TabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBBF2CF736AF24D04E69309 /* TabStrip.swift */; };
-		E2C8B1000000000000000001 /* TabContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2C8B1000000000000000002 /* TabContextMenu.swift */; };
 		76A92C439DECF23CAC694D84 /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6F0797BF320978F6417590 /* AppShellView.swift */; };
 		787B3F9A8DF011D63818DD13 /* VideoAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA0BAAC4ED8F5F19B3B740C /* VideoAttachment.swift */; };
 		7BD8566622A1BE1171488C6B /* FrontmatterParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB02B3CFC21C706194A9DB5 /* FrontmatterParser.swift */; };
 		7C35B37FD144800020BFB946 /* AttachmentImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D6F2F490BA44C7878FE9837 /* AttachmentImport.swift */; };
 		80158F3C4B2D504022DD1B78 /* WindowCloseBehavior.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC5ED0A570180C8D5FC1828D /* WindowCloseBehavior.swift */; };
+		82F394133219A20D734AAC2E /* TabContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35B4D2621ADF29F57E623A6C /* TabContextMenu.swift */; };
+		94C97F3F2F4D3A181D813591 /* XhsPreviewPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F7053A14A97A28F32F7553F /* XhsPreviewPane.swift */; };
 		96BEB26FE3BE3C1BAB4F8F71 /* NotelyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F92311962A01A52B450F566 /* NotelyApp.swift */; };
 		97B9840F54C3F8B26A63CC08 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A5693582B5792899EADACC22 /* Assets.xcassets */; };
 		9BD5B3FDBBAEF11946D028E3 /* ShiyeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */; };
-		7419F0000000000000000001 /* QuietScroller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7419F0000000000000000002 /* QuietScroller.swift */; };
-		E1B7A0000000000000000001 /* PageEdgeBlur.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B7A0000000000000000002 /* PageEdgeBlur.swift */; };
-		E1B7A1000000000000000001 /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B7A1000000000000000002 /* PDFExporter.swift */; };
 		9F8BF31EB0BC5680357930C5 /* ExternalSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8030200ECD3965B795047411 /* ExternalSync.swift */; };
+		A06CF58A5074A823598CE2BE /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C87EBAAA255B01773E7334 /* PDFExporter.swift */; };
 		B01F02B34597F599660C7FBB /* CodeBlockLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A16EF59DECE0BFDBD23DD4 /* CodeBlockLayoutManager.swift */; };
 		B3F55969806245A31F0F94E7 /* WysiwygTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F04AAD312B1139EC7FA8DC /* WysiwygTextView.swift */; };
+		B4AF80B0DC1911A285A8163C /* PageEdgeBlur.swift in Sources */ = {isa = PBXBuildFile; fileRef = D752AEB34CFF5241D9B30456 /* PageEdgeBlur.swift */; };
 		B4E6F09BF8AD5009C76353A5 /* Callout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C906C229161A5930570BE5D /* Callout.swift */; };
 		B6E59F1EB3D9260C1375C59C /* NoteModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 051335655F5AEF97F593867C /* NoteModel.swift */; };
 		B7E7946043555D673AD76D4B /* LibraryMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = 333BF991B70DE6848632A323 /* LibraryMove.swift */; };
 		BDA671EA0B3446241CA15312 /* FileNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9390B0509CE4E1E21BA020B4 /* FileNoteStore.swift */; };
 		C034C801EBAB47DF6156C0A0 /* ImageAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65A3B1ABF107ECCBBF6D9172 /* ImageAttachment.swift */; };
+		C167381786854772294C7950 /* WeChatRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13A1D4290C74C1F6F5A77FB7 /* WeChatRenderer.swift */; };
+		C40518A57CCD19F6A4635AA0 /* XhsDeck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EFBBCAF1665893DB5F8CFBB /* XhsDeck.swift */; };
 		C49FAA123F69F37D5D946DD6 /* ColorTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A4085CE734D06BACDB912F /* ColorTokens.swift */; };
 		C7D8FEDA1B1065DD1921E7BB /* FilePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F297B5CAA82F8974E3F609 /* FilePreviewView.swift */; };
 		C87868DB75BF5626922EB152 /* FuzzySearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B421ED545AE467E742378B3 /* FuzzySearch.swift */; };
@@ -58,13 +62,13 @@
 		DA1C5BC8DF33C0DB85CC2167 /* FileNote.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCF1FEF34613D6755052666A /* FileNote.swift */; };
 		DB4658A93567D89048472713 /* TitleExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */; };
 		DD4BC0573F31BEF844E3B823 /* NoteTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = C504A1DB854F55CAAA4D9A0E /* NoteTree.swift */; };
-		E49CB7CEF8BB110591720FB1 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862F15E8D1FA0A7E757E7F92 /* EditorView.swift */; };
-		EDC3F2C3790B9433DE567946 /* QuickCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C59A90729E2983F706552A /* QuickCapture.swift */; };
 		E40D2FC73ECFF62D750A9BD3 /* MemoMarkdown.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */; };
-		1696867C399683A368DECE3C /* WeChatRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AAECC64E54E87B0F01F177 /* WeChatRenderer.swift */; };
-		6F7647206EC92ADD589A4A3F /* WeChatPreviewPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = D88AE943859B1218B4FAF387 /* WeChatPreviewPane.swift */; };
-		72470089CC26A059EF278793 /* WeChat in Resources */ = {isa = PBXBuildFile; fileRef = 2838BF24ADBE56704CE49D61 /* WeChat */; };
+		E49CB7CEF8BB110591720FB1 /* EditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 862F15E8D1FA0A7E757E7F92 /* EditorView.swift */; };
+		E639A3BCC4A1B487E390F021 /* WeChatPreviewPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03532A01AA2EB932F86A5870 /* WeChatPreviewPane.swift */; };
+		EC85BE265E3DE238477FE459 /* Xiaohongshu in Resources */ = {isa = PBXBuildFile; fileRef = 1D7B504D6DE66D608D0DA441 /* Xiaohongshu */; };
+		EDC3F2C3790B9433DE567946 /* QuickCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C59A90729E2983F706552A /* QuickCapture.swift */; };
 		EE0BC24F859236316FA0BDFB /* MemoFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DCE99219CB55CD44FB2276B /* MemoFormat.swift */; };
+		F1BD02451C1525616B0EA6C0 /* XhsCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C3390EB3BA383B3E9F066B3 /* XhsCards.swift */; };
 		FB6F8627009D060313BB3270 /* MarkdownTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3745D3D88134D53823E2FA34 /* MarkdownTable.swift */; };
 		FE518D7B91FF175DA7482FB8 /* EditorContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42B5746C3AF4A0D882715D97 /* EditorContainerView.swift */; };
 		FF1561D3A5311E63D449EB81 /* TagSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD7D32FD58C7D124F99A5E38 /* TagSearch.swift */; };
@@ -72,41 +76,47 @@
 
 /* Begin PBXFileReference section */
 		02E74CD2E4CC0B8532F2FAF8 /* LinkRewrite.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkRewrite.swift; sourceTree = "<group>"; };
+		03532A01AA2EB932F86A5870 /* WeChatPreviewPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeChatPreviewPane.swift; sourceTree = "<group>"; };
 		051335655F5AEF97F593867C /* NoteModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteModel.swift; sourceTree = "<group>"; };
 		10560BD4D433AA5E2E0963E9 /* MemosView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemosView.swift; sourceTree = "<group>"; };
 		12750DB5F5885CC0AF7C06A2 /* WysiwygEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WysiwygEngine.swift; sourceTree = "<group>"; };
+		13A1D4290C74C1F6F5A77FB7 /* WeChatRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeChatRenderer.swift; sourceTree = "<group>"; };
+		1D7B504D6DE66D608D0DA441 /* Xiaohongshu */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Xiaohongshu; path = Notely/Resources/Xiaohongshu; sourceTree = SOURCE_ROOT; };
 		23C6899CB9959842A85E0BAE /* NoteTabs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTabs.swift; sourceTree = "<group>"; };
 		2495FCAE3556EDC081870262 /* SidebarWidthPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarWidthPolicy.swift; sourceTree = "<group>"; };
 		2C906C229161A5930570BE5D /* Callout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Callout.swift; sourceTree = "<group>"; };
+		2EFBBCAF1665893DB5F8CFBB /* XhsDeck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XhsDeck.swift; sourceTree = "<group>"; };
 		333BF991B70DE6848632A323 /* LibraryMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryMove.swift; sourceTree = "<group>"; };
+		35B4D2621ADF29F57E623A6C /* TabContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabContextMenu.swift; sourceTree = "<group>"; };
 		3745D3D88134D53823E2FA34 /* MarkdownTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownTable.swift; sourceTree = "<group>"; };
 		3B421ED545AE467E742378B3 /* FuzzySearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuzzySearch.swift; sourceTree = "<group>"; };
 		3D6F2F490BA44C7878FE9837 /* AttachmentImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImport.swift; sourceTree = "<group>"; };
 		3F92311962A01A52B450F566 /* NotelyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotelyApp.swift; sourceTree = "<group>"; };
 		41504AFB5496F8D42652D3DE /* Notely.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Notely.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoMarkdown.swift; sourceTree = "<group>"; };
 		42B5746C3AF4A0D882715D97 /* EditorContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorContainerView.swift; sourceTree = "<group>"; };
 		4967BB900518D608FE8A06C5 /* NoteCardSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteCardSummary.swift; sourceTree = "<group>"; };
 		4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TitleExtractor.swift; sourceTree = "<group>"; };
 		4AA0BAAC4ED8F5F19B3B740C /* VideoAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAttachment.swift; sourceTree = "<group>"; };
 		4ACD2F5A00559F187AD36321 /* InlineLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineLink.swift; sourceTree = "<group>"; };
-		423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoMarkdown.swift; sourceTree = "<group>"; };
-		85AAECC64E54E87B0F01F177 /* WeChatRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeChatRenderer.swift; sourceTree = "<group>"; };
-		D88AE943859B1218B4FAF387 /* WeChatPreviewPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeChatPreviewPane.swift; sourceTree = "<group>"; };
-		2838BF24ADBE56704CE49D61 /* WeChat */ = {isa = PBXFileReference; lastKnownFileType = folder; path = WeChat; sourceTree = "<group>"; };
 		4DCE99219CB55CD44FB2276B /* MemoFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoFormat.swift; sourceTree = "<group>"; };
+		53C87EBAAA255B01773E7334 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
+		5C3390EB3BA383B3E9F066B3 /* XhsCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XhsCards.swift; sourceTree = "<group>"; };
+		5F7053A14A97A28F32F7553F /* XhsPreviewPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XhsPreviewPane.swift; sourceTree = "<group>"; };
 		62A4085CE734D06BACDB912F /* ColorTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorTokens.swift; sourceTree = "<group>"; };
 		65A3B1ABF107ECCBBF6D9172 /* ImageAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageAttachment.swift; sourceTree = "<group>"; };
 		68CA4E783C0848DB5608663A /* TagExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagExtractor.swift; sourceTree = "<group>"; };
 		69E05CB6F22B4D042DD09D45 /* OutlineSectionPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutlineSectionPreview.swift; sourceTree = "<group>"; };
 		71147678FE2A21B62801107B /* MemoText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoText.swift; sourceTree = "<group>"; };
 		7CBBF2CF736AF24D04E69309 /* TabStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabStrip.swift; sourceTree = "<group>"; };
-		E2C8B1000000000000000002 /* TabContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabContextMenu.swift; sourceTree = "<group>"; };
 		8030200ECD3965B795047411 /* ExternalSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalSync.swift; sourceTree = "<group>"; };
+		85FA9BF18A9E4B93D1A20F2B /* QuietScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietScroller.swift; sourceTree = "<group>"; };
 		862F15E8D1FA0A7E757E7F92 /* EditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorView.swift; sourceTree = "<group>"; };
 		8E1635F8EC09DAC796A3A7B3 /* DataController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataController.swift; sourceTree = "<group>"; };
 		9390B0509CE4E1E21BA020B4 /* FileNoteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNoteStore.swift; sourceTree = "<group>"; };
 		95F04AAD312B1139EC7FA8DC /* WysiwygTextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WysiwygTextView.swift; sourceTree = "<group>"; };
 		96F297B5CAA82F8974E3F609 /* FilePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewView.swift; sourceTree = "<group>"; };
+		9A440F59787ECC30104DDBC0 /* WeChat */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WeChat; path = Notely/Resources/WeChat; sourceTree = SOURCE_ROOT; };
 		A5693582B5792899EADACC22 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AFF80F0A501C42C6363C311D /* NoteTreeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTreeState.swift; sourceTree = "<group>"; };
 		B3C59A90729E2983F706552A /* QuickCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickCapture.swift; sourceTree = "<group>"; };
@@ -119,10 +129,8 @@
 		C504A1DB854F55CAAA4D9A0E /* NoteTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTree.swift; sourceTree = "<group>"; };
 		CFB02B3CFC21C706194A9DB5 /* FrontmatterParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterParser.swift; sourceTree = "<group>"; };
 		D47DC733AE9756A4A93F7A31 /* CompositeFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompositeFont.swift; sourceTree = "<group>"; };
+		D752AEB34CFF5241D9B30456 /* PageEdgeBlur.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageEdgeBlur.swift; sourceTree = "<group>"; };
 		D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShiyeIcon.swift; sourceTree = "<group>"; };
-		7419F0000000000000000002 /* QuietScroller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietScroller.swift; sourceTree = "<group>"; };
-		E1B7A0000000000000000002 /* PageEdgeBlur.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageEdgeBlur.swift; sourceTree = "<group>"; };
-		E1B7A1000000000000000002 /* PDFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFExporter.swift; sourceTree = "<group>"; };
 		D918A428AAFA3CCB3448EFD9 /* LatexMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatexMath.swift; sourceTree = "<group>"; };
 		DCF1FEF34613D6755052666A /* FileNote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileNote.swift; sourceTree = "<group>"; };
 		E393329227C72C2C990CD4DF /* SearchPopover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchPopover.swift; sourceTree = "<group>"; };
@@ -148,8 +156,8 @@
 		1FA2A6912DA9F6B38625723C /* Tabs */ = {
 			isa = PBXGroup;
 			children = (
+				35B4D2621ADF29F57E623A6C /* TabContextMenu.swift */,
 				7CBBF2CF736AF24D04E69309 /* TabStrip.swift */,
-				E2C8B1000000000000000002 /* TabContextMenu.swift */,
 			);
 			path = Tabs;
 			sourceTree = "<group>";
@@ -196,9 +204,9 @@
 			isa = PBXGroup;
 			children = (
 				62A4085CE734D06BACDB912F /* ColorTokens.swift */,
+				D752AEB34CFF5241D9B30456 /* PageEdgeBlur.swift */,
+				85FA9BF18A9E4B93D1A20F2B /* QuietScroller.swift */,
 				D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */,
-				7419F0000000000000000002 /* QuietScroller.swift */,
-				E1B7A0000000000000000002 /* PageEdgeBlur.swift */,
 				FE8E0C89B63AFC7A7FC3DE27 /* ThemePalette.swift */,
 			);
 			path = Utils;
@@ -211,7 +219,8 @@
 				FC832FB4A06344B92E957336 /* FolderOpenView.swift */,
 				10560BD4D433AA5E2E0963E9 /* MemosView.swift */,
 				71147678FE2A21B62801107B /* MemoText.swift */,
-				D88AE943859B1218B4FAF387 /* WeChatPreviewPane.swift */,
+				03532A01AA2EB932F86A5870 /* WeChatPreviewPane.swift */,
+				5F7053A14A97A28F32F7553F /* XhsPreviewPane.swift */,
 				30E11D5D6BD4E37800B83CC5 /* Editor */,
 				EE75D47D3AD44986921427A0 /* NoteList */,
 				C33BE59A04C02E376255BCA1 /* Settings */,
@@ -263,11 +272,13 @@
 				333BF991B70DE6848632A323 /* LibraryMove.swift */,
 				02E74CD2E4CC0B8532F2FAF8 /* LinkRewrite.swift */,
 				4DCE99219CB55CD44FB2276B /* MemoFormat.swift */,
-				85AAECC64E54E87B0F01F177 /* WeChatRenderer.swift */,
 				423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */,
-				E1B7A1000000000000000002 /* PDFExporter.swift */,
+				53C87EBAAA255B01773E7334 /* PDFExporter.swift */,
 				68CA4E783C0848DB5608663A /* TagExtractor.swift */,
 				4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */,
+				13A1D4290C74C1F6F5A77FB7 /* WeChatRenderer.swift */,
+				5C3390EB3BA383B3E9F066B3 /* XhsCards.swift */,
+				2EFBBCAF1665893DB5F8CFBB /* XhsDeck.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -297,7 +308,8 @@
 			isa = PBXGroup;
 			children = (
 				A5693582B5792899EADACC22 /* Assets.xcassets */,
-				2838BF24ADBE56704CE49D61 /* WeChat */,
+				9A440F59787ECC30104DDBC0 /* WeChat */,
+				1D7B504D6DE66D608D0DA441 /* Xiaohongshu */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -365,7 +377,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				97B9840F54C3F8B26A63CC08 /* Assets.xcassets in Resources */,
-				72470089CC26A059EF278793 /* WeChat in Resources */,
+				6B2435C5734242C8F5BEF80D /* WeChat in Resources */,
+				EC85BE265E3DE238477FE459 /* Xiaohongshu in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -403,11 +416,8 @@
 				51E25C4CA0FD5BEDFB718359 /* LinkRewrite.swift in Sources */,
 				FB6F8627009D060313BB3270 /* MarkdownTable.swift in Sources */,
 				EE0BC24F859236316FA0BDFB /* MemoFormat.swift in Sources */,
-				1696867C399683A368DECE3C /* WeChatRenderer.swift in Sources */,
-				6F7647206EC92ADD589A4A3F /* WeChatPreviewPane.swift in Sources */,
 				E40D2FC73ECFF62D750A9BD3 /* MemoMarkdown.swift in Sources */,
 				629F37287A9E1C3EB743CCC8 /* MemoText.swift in Sources */,
-				E1B7A1000000000000000001 /* PDFExporter.swift in Sources */,
 				D33A8A647BFA55437EB1DF06 /* MemosView.swift in Sources */,
 				12B288725023FC31275097E7 /* NoteCardSummary.swift in Sources */,
 				B6E59F1EB3D9260C1375C59C /* NoteModel.swift in Sources */,
@@ -417,24 +427,30 @@
 				96BEB26FE3BE3C1BAB4F8F71 /* NotelyApp.swift in Sources */,
 				43A16CAEAE433C372A8DEF37 /* OutlineRail.swift in Sources */,
 				6C33E266DBC8945596F799B7 /* OutlineSectionPreview.swift in Sources */,
+				A06CF58A5074A823598CE2BE /* PDFExporter.swift in Sources */,
+				B4AF80B0DC1911A285A8163C /* PageEdgeBlur.swift in Sources */,
 				EDC3F2C3790B9433DE567946 /* QuickCapture.swift in Sources */,
+				69B1F3996A0665B60E0F6C7B /* QuietScroller.swift in Sources */,
 				4699BE42784CA2058A721896 /* SearchPopover.swift in Sources */,
 				2577B1CBF8791056FAE47ECF /* SettingsView.swift in Sources */,
 				9BD5B3FDBBAEF11946D028E3 /* ShiyeIcon.swift in Sources */,
-				7419F0000000000000000001 /* QuietScroller.swift in Sources */,
-				E1B7A0000000000000000001 /* PageEdgeBlur.swift in Sources */,
 				07C3BF96370CFBC42EBF64C0 /* SidebarView.swift in Sources */,
 				6AC7EC19D22E8CD86E25E468 /* SidebarWidthPolicy.swift in Sources */,
+				82F394133219A20D734AAC2E /* TabContextMenu.swift in Sources */,
 				746C69866F6F757204DBE7C0 /* TabStrip.swift in Sources */,
-				E2C8B1000000000000000001 /* TabContextMenu.swift in Sources */,
 				73E9A7FD99DEA3EC14C4B6A8 /* TagExtractor.swift in Sources */,
 				FF1561D3A5311E63D449EB81 /* TagSearch.swift in Sources */,
 				2E83391C9DA508FD453E1906 /* ThemePalette.swift in Sources */,
 				DB4658A93567D89048472713 /* TitleExtractor.swift in Sources */,
 				787B3F9A8DF011D63818DD13 /* VideoAttachment.swift in Sources */,
+				E639A3BCC4A1B487E390F021 /* WeChatPreviewPane.swift in Sources */,
+				C167381786854772294C7950 /* WeChatRenderer.swift in Sources */,
 				80158F3C4B2D504022DD1B78 /* WindowCloseBehavior.swift in Sources */,
 				402621765996F526DB134691 /* WysiwygEngine.swift in Sources */,
 				B3F55969806245A31F0F94E7 /* WysiwygTextView.swift in Sources */,
+				F1BD02451C1525616B0EA6C0 /* XhsCards.swift in Sources */,
+				C40518A57CCD19F6A4635AA0 /* XhsDeck.swift in Sources */,
+				94C97F3F2F4D3A181D813591 /* XhsPreviewPane.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

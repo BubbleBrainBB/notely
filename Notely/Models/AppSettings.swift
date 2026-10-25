@@ -38,6 +38,26 @@ enum AppSettings {
         set { UserDefaults.standard.set(newValue, forKey: wechatExtensionKey) }
     }
 
+    /// The Xiaohongshu Cards extension and its defaults (each note may
+    /// choose its own template and size in the preview).
+    static let xhsExtensionKey = "notely.extensions.xiaohongshu"
+    static let xhsTemplateKey = "notely.xhs.template"
+    static let xhsRatioKey = "notely.xhs.ratio"
+    static let xhsPageNumbersKey = "notely.xhs.pageNumbers"
+    static let xhsNameKey = "notely.xhs.name"
+    static let xhsHandleKey = "notely.xhs.handle"
+    static let xhsAvatarKey = "notely.xhs.avatar"
+    static let xhsEndCardKey = "notely.xhs.endCard"
+    static let xhsEndLineKey = "notely.xhs.endLine"
+
+    static var xhsExtension: Bool {
+        get { UserDefaults.standard.bool(forKey: xhsExtensionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: xhsExtensionKey) }
+    }
+
+    /// Either publishing extension on: the toolbar's preview button shows.
+    static var anyPublishExtension: Bool { wechatExtension || xhsExtension }
+
     static var theme: String {
         get { UserDefaults.standard.string(forKey: themeKey) ?? "system" }
         set { UserDefaults.standard.set(newValue, forKey: themeKey) }

@@ -231,6 +231,16 @@ struct NoteToolbar: ViewModifier {
     @Environment(FileNoteStore.self) var store
     @State private var showsInfo = false
     @AppStorage(AppSettings.wechatExtensionKey) private var wechatEnabled = false
+    @AppStorage(AppSettings.xhsExtensionKey) private var xhsEnabled = false
+
+    /// The preview's name for the extensions that are on.
+    private var previewName: String {
+        switch (wechatEnabled, xhsEnabled) {
+        case (true, false): "WeChat Preview"
+        case (false, true): "Xiaohongshu Preview"
+        default: "Publish Preview"
+        }
+    }
 
     /// The file name: notes are files, and clipped articles often have no
     /// heading, so their first line makes a poor title.
@@ -258,23 +268,23 @@ struct NoteToolbar: ViewModifier {
                 // capsule turned off — the same treatment as the sidebar
                 // toggle, so the page's corner holds plain icons, not a pill.
                 // The same icons with one page or several.
-                if note != nil, wechatEnabled {
+                if note != nil, wechatEnabled || xhsEnabled {
                     FlatToolbarItem {
                         Button {
-                            appModel.toggleWeChatPreview()
+                            appModel.togglePublishPreview()
                         } label: {
                             Label {
-                                Text("WeChat Preview")
+                                Text(previewName)
                             } icon: {
                                 // In the accent while open, like a switch that's on.
-                                if appModel.isWeChatPreviewOpen {
+                                if appModel.isPublishPreviewOpen {
                                     Image(nsImage: ShiyeGlyph.phone.templateImage()).foregroundStyle(Color.accent)
                                 } else {
                                     Image(nsImage: ShiyeGlyph.phone.templateImage())
                                 }
                             }
                         }
-                        .help(appModel.isWeChatPreviewOpen ? "Hide WeChat Preview (⌃⌘P)" : "WeChat Preview (⌃⌘P)")
+                        .help(appModel.isPublishPreviewOpen ? "Hide \(previewName) (⌃⌘P)" : "\(previewName) (⌃⌘P)")
                     }
                 }
 
@@ -313,11 +323,16 @@ struct NoteToolbar: ViewModifier {
                             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
                             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
                             Button("Export as PDF…") { onExportPDF?() }
-                            if wechatEnabled {
-                                Button(appModel.isWeChatPreviewOpen ? "Hide WeChat Preview" : "WeChat Preview") {
-                                    appModel.toggleWeChatPreview()
+                            if wechatEnabled || xhsEnabled {
+                                Button(appModel.isPublishPreviewOpen ? "Hide \(previewName)" : previewName) {
+                                    appModel.togglePublishPreview()
                                 }
+                            }
+                            if wechatEnabled {
                                 Button("Copy for WeChat") { Task { await WeChatCopy.copyOrShowWhy(appModel) } }
+                            }
+                            if xhsEnabled {
+                                Button("Add Xiaohongshu Cards to Photos") { Task { await XhsCards.addOrShowWhy(appModel) } }
                             }
                             Divider()
                             Button("Delete", role: .destructive) {

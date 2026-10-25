@@ -30,7 +30,7 @@ final class AppModel {
     /// that flips at once while the page is still sliding, and a strip that
     /// is too wide for one frame sends every toolbar item into » for good.
     var tabStripWidth: CGFloat {
-        pageFrame.width - 164 - 72 - (AppSettings.wechatExtension ? 44 : 0) - max(0, 132 - pageFrame.minX)
+        pageFrame.width - 164 - 72 - (AppSettings.anyPublishExtension ? 44 : 0) - max(0, 132 - pageFrame.minX)
     }
 
     var activeIndex: Int { tabs.firstIndex { $0.id == activeTabId } ?? 0 }
@@ -72,9 +72,10 @@ final class AppModel {
         tabs[activeIndex].content = page
     }
 
-    // MARK: - WeChat preview
+    // MARK: - Publish preview
 
-    /// The open note as the WeChat preview and Copy for WeChat see it.
+    /// The open note as the publish preview, Copy for WeChat and the
+    /// Xiaohongshu export see it.
     struct NoteText: Equatable {
         var noteId: String
         var path: String
@@ -88,14 +89,40 @@ final class AppModel {
     /// redraws nothing.
     @ObservationIgnored var typedNote: NoteText?
 
-    /// Tabs with the WeChat preview open beside the page.
-    private(set) var wechatPreviewTabs: Set<UUID> = []
-    var isWeChatPreviewOpen: Bool { wechatPreviewTabs.contains(activeTabId) }
+    /// Tabs with the publish preview (WeChat or Xiaohongshu) open beside the page.
+    private(set) var previewTabs: Set<UUID> = []
+    var isPublishPreviewOpen: Bool { previewTabs.contains(activeTabId) }
 
-    func toggleWeChatPreview() {
+    func togglePublishPreview() {
         withAnimation(.easeInOut(duration: 0.22)) {
-            if wechatPreviewTabs.remove(activeTabId) == nil { wechatPreviewTabs.insert(activeTabId) }
+            if previewTabs.remove(activeTabId) == nil { previewTabs.insert(activeTabId) }
         }
+    }
+
+    /// Where the preview publishes to. With both extensions on, each note
+    /// keeps the one it was last switched to (board ㊾).
+    enum PublishTarget: String, CaseIterable {
+        case wechat, xiaohongshu
+    }
+
+    private static let publishTargetsKey = "notely.publish.targets"
+    private var publishTargets: [String: String] =
+        UserDefaults.standard.dictionary(forKey: AppModel.publishTargetsKey) as? [String: String] ?? [:]
+
+    func publishTarget(for noteId: String?) -> PublishTarget {
+        switch (AppSettings.wechatExtension, AppSettings.xhsExtension) {
+        case (true, false): return .wechat
+        case (false, true): return .xiaohongshu
+        default:
+            let chosen = noteId.flatMap { publishTargets[$0] } ?? publishTargets[""]
+            return chosen.flatMap(PublishTarget.init(rawValue:)) ?? .wechat
+        }
+    }
+
+    func setPublishTarget(_ target: PublishTarget, for noteId: String?) {
+        if let noteId { publishTargets[noteId] = target.rawValue }
+        publishTargets[""] = target.rawValue
+        UserDefaults.standard.set(publishTargets, forKey: Self.publishTargetsKey)
     }
 
     /// The note in the active tab. Setting nil turns it into a blank draft.
@@ -256,7 +283,7 @@ final class AppModel {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         let tab = tabs.remove(at: index)
         histories[id] = nil
-        wechatPreviewTabs.remove(id)
+        previewTabs.remove(id)
         if tab.content != .draft {
             closedTabs.append(tab)
             if closedTabs.count > 30 { closedTabs.removeFirst() }

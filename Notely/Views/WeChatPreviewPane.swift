@@ -13,8 +13,6 @@ struct WeChatPreviewPane: View {
     @State private var failure: String?
     @State private var copied = false
 
-    static let width: CGFloat = 420
-
     private var theme: WeChatRenderer.Theme { WeChatRenderer.Theme(rawValue: themeName) ?? .blackRed }
 
     private struct Request: Equatable {
@@ -43,7 +41,6 @@ struct WeChatPreviewPane: View {
             ArticleWebView(html: article?.html ?? "")
                 .opacity(failure == nil ? 1 : 0.35)
         }
-        .background(Color.quietSurface)
         .task(id: Request(note: appModel.previewNote, theme: theme)) { await render() }
     }
 
@@ -154,7 +151,7 @@ enum WeChatCopy {
     static func copyOrShowWhy(_ appModel: AppModel) async {
         guard !(await copyOpenNote(appModel)) else { return }
         NSSound.beep()
-        if !appModel.isWeChatPreviewOpen { appModel.toggleWeChatPreview() }
+        if !appModel.isPublishPreviewOpen { appModel.togglePublishPreview() }
     }
 
     /// The renderer's notes are in Chinese (the skill's own words); the app
@@ -194,7 +191,7 @@ enum WeChatCopy {
 
 /// A theme's name; the chosen one dark and underlined in the accent, as in
 /// Settings.
-private struct ThemeWord: View {
+struct ThemeWord: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
@@ -218,7 +215,7 @@ private struct ThemeWord: View {
     }
 }
 
-private struct QuietLink: View {
+struct QuietLink: View {
     let title: String
     let action: () -> Void
     @State private var isHovering = false
@@ -236,7 +233,7 @@ private struct QuietLink: View {
 }
 
 /// The sheet's one solid button.
-private struct CopyButtonStyle: ButtonStyle {
+struct CopyButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
