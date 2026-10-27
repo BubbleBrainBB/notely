@@ -43,6 +43,7 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .card figure .lead { margin-bottom: 12px; }
 /* White behind every image: a transparent chart reads as it does in the note, on any card. */
 .card figure .img { align-self: center; overflow: hidden; background: #FFFFFF; }
+.card figure .img.pending { background: rgba(127,127,127,.12); }
 .card figure img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .card figcaption { margin-top: 8px; font-size: 11px; line-height: 1.5; text-align: center; }
 .card .link { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }

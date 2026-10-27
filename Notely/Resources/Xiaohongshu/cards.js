@@ -152,7 +152,9 @@
     const box = imageBox(block.src, scale, maxHeight);
     const lead = block.lead ? `<p class="lead">${space(block.lead)}</p>` : '';
     const caption = block.caption ? `<figcaption>${family === 'grid' ? '↑ ' : ''}${space(block.caption)}</figcaption>` : '';
-    return `<figure>${lead}<div class="img" style="width:${box.width}px;height:${box.height}px"><img src="${escape(block.src)}" alt=""></div>${caption}</figure>`;
+    // Still loading: a quiet box of a guessed size until the next layout.
+    const pending = images.has(block.src) ? '' : ' pending';
+    return `<figure>${lead}<div class="img${pending}" style="width:${box.width}px;height:${box.height}px"><img src="${escape(block.src)}" alt=""></div>${caption}</figure>`;
   }
 
   function itemHTML(item) {
@@ -215,17 +217,30 @@
 
   // ───────── Images ─────────
 
+  /** Each image's size once loaded; null if it couldn't be. */
   const images = new Map();
+  /** Images on their way, so a layout per keystroke doesn't load them again. */
+  const loading = new Map();
 
   function loadImages(blocks) {
     const sources = [...new Set(blocks.filter((b) => b.kind === 'figure').map((b) => b.src))];
-    return Promise.all(sources.map((src) => images.has(src) ? null : new Promise((resolve) => {
-      const image = new Image();
-      image.onload = () => { images.set(src, { w: image.naturalWidth || 1, h: image.naturalHeight || 1 }); resolve(); };
-      image.onerror = () => { images.set(src, null); resolve(); };
-      image.src = src;
-    })));
+    return Promise.all(sources.map((src) => {
+      if (images.has(src)) return null;
+      if (!loading.has(src)) {
+        loading.set(src, new Promise((resolve) => {
+          const image = new Image();
+          const done = (size) => { images.set(src, size); loading.delete(src); resolve(); };
+          image.onload = () => done({ w: image.naturalWidth || 1, h: image.naturalHeight || 1 });
+          image.onerror = () => done(null);
+          image.src = src;
+        }));
+      }
+      return loading.get(src);
+    }));
   }
+
+  /** Counts layouts, so a late one for an old note or old text is dropped. */
+  let generation = 0;
 
   // ───────── Sections and runs ─────────
 
@@ -472,7 +487,21 @@
     const deck = input.deck;
     const warnings = [];
     try { await document.fonts.ready; } catch (e) { /* fonts load as they can */ }
-    await loadImages(deck.blocks);
+    // Export waits for every image. The preview lays the cards out at once,
+    // guessing the size of images still loading, and again when they arrive.
+    const mine = ++generation;
+    const arriving = loadImages(deck.blocks);
+    if (exporting) {
+      await arriving;
+    } else if (deck.blocks.some((block) => block.kind === 'figure' && !images.has(block.src))) {
+      const pendingInput = input;
+      arriving.then(async () => {
+        if (mine !== generation) return;
+        const result = await layout(pendingInput);
+        const handler = window.webkit && window.webkit.messageHandlers.xhs;
+        if (handler && mine + 1 === generation) handler.postMessage({ type: 'layout', ...result });
+      });
+    }
 
     // One line of body text, for counting lines.
     const sample = probe(false).body;

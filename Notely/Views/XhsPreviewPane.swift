@@ -507,8 +507,13 @@ private struct XhsCardsView: NSViewRepresentable {
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let body = message.body as? [String: Any], body["type"] as? String == "menu",
-                  let index = body["index"] as? Int, let webView, let menu else { return }
+            guard let body = message.body as? [String: Any] else { return }
+            // The cards laid out again once their images arrived.
+            if body["type"] as? String == "layout" {
+                onLayout?(body["count"] as? Int ?? 0, body["warnings"] as? [String] ?? [])
+                return
+            }
+            guard body["type"] as? String == "menu", let index = body["index"] as? Int, let webView, let menu else { return }
             let ids = body["ids"] as? [String] ?? []
             let x = body["x"] as? Double ?? 0
             let y = body["y"] as? Double ?? 0
