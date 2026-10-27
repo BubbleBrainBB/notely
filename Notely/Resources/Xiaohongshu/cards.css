@@ -30,8 +30,6 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .card p, .card h1, .card h2, .card h3, .card figure, .card blockquote, .card ul, .card ol, .card pre, .card table { margin: 0; }
 .card .spacer { flex: 1; }
 .card .nw { white-space: nowrap; }
-/* Titles break where keepWords allows, not where text-wrap: pretty would rebalance them. */
-.card h1 { text-wrap: wrap; }
 .card code { font-family: 'SF Mono', Menlo, monospace; font-size: .88em; padding: 0 3px; border-radius: 3px; }
 .card pre { padding: 10px 12px; border-radius: 6px; font: 11px/1.6 'SF Mono', Menlo, monospace;
   white-space: pre-wrap; word-break: break-all; }
@@ -65,7 +63,7 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .t-memo th { border-bottom: 1px solid #D9D7D0; } .t-memo td { border-bottom: 1px solid #EEEDE8; }
 .t-memo .runhead { font-size: 11px; color: #6F6D67; margin-bottom: 12px; }
 .t-memo .chapter h2 { margin-top: 4px; font-size: 32px; line-height: 1.2; font-weight: 800; color: #1B1B1A; }
-.t-memo .chapter .hl, .t-memo.cover .hl { background: linear-gradient(transparent 58%, #FFE070 58%); }
+.t-memo .chapter .hl { background: linear-gradient(transparent 58%, #FFE070 58%); }
 .t-memo .chapter .rule { height: 1px; background: #ECEBE7; margin-top: 16px; }
 .t-memo h3 { font-size: 16px; line-height: 1.5; font-weight: 800; color: #1B1B1A; }
 .t-memo figure .img { border-radius: 8px; box-shadow: 0 0 0 1px #ECEBE7; }
@@ -73,10 +71,6 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .t-memo blockquote.inline { padding-left: 12px; border-left: 3px solid #FFD84D; }
 .t-memo .foot { display: flex; justify-content: space-between; margin-top: 10px; padding-top: 11px;
   border-top: 1px dashed #E4E2DC; font-size: 10.5px; color: #6F6D67; }
-.t-memo.cover { padding-top: 32px; }
-.t-memo.cover .kicker { font-size: 11.5px; color: #6F6D67; letter-spacing: .5px; margin-bottom: 16px; }
-.t-memo.cover h1 { font-size: 27px; line-height: 1.38; font-weight: 800; color: #1B1B1A; }
-.t-memo.cover .sub { margin-top: 22px; font-size: 15px; line-height: 1.8; color: #46443F; }
 .t-memo.quote blockquote { font-size: 20px; line-height: 1.7; font-weight: 700; color: #1B1B1A; }
 .t-memo.quote .mark { font-size: 64px; line-height: .8; height: 36px; font-weight: 800; color: #FFD84D; }
 .t-memo.end .name { font-size: 22px; font-weight: 800; color: #1B1B1A; }
@@ -101,8 +95,8 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .t-grid .head .num { margin-bottom: 14px; }
 .t-grid .runhead { font-family: 'Kaiti SC', 'STKaiti', serif; font-size: 13px; color: #2F6BFF; margin-bottom: 14px; }
 .t-grid .chapter h2 { font-size: 30px; line-height: 1.25; font-weight: 800; color: #151515; }
-.t-grid .chapter .hl, .t-grid.cover .hl { background: rgba(47,107,255,.2); padding: 0 4px; border-radius: 3px; }
-.t-grid .chapter svg, .t-grid.cover svg.squiggle { display: block; margin-top: 4px; }
+.t-grid .chapter .hl { background: rgba(47,107,255,.2); padding: 0 4px; border-radius: 3px; }
+.t-grid .chapter svg { display: block; margin-top: 4px; }
 .t-grid h3 { font-size: 16px; line-height: 1.5; font-weight: 800; color: #151515; }
 .t-grid figure .img { position: relative; overflow: visible; transform: rotate(-1.4deg); box-shadow: 0 3px 10px rgba(0,0,0,.1);
   background: #FFFFFF; margin: 6px 0 2px; }
@@ -116,11 +110,6 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .t-grid blockquote.inline { padding-left: 12px; border-left: 3px solid #2F6BFF; }
 .t-grid .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 10.5px; color: #5E5E5A; }
 .t-grid .foot .page { padding: 1px 8px; border-radius: 10px; border: 1px solid #2F6BFF; color: #2F6BFF; }
-.t-grid.cover { padding-top: 30px; }
-.t-grid.cover .kicker { align-self: flex-start; padding: 3px 9px; border-radius: 4px; background: #2F6BFF; color: #FFFFFF;
-  font-size: 11px; font-weight: 600; margin-bottom: 18px; }
-.t-grid.cover h1 { font-size: 27px; line-height: 1.42; font-weight: 800; color: #151515; }
-.t-grid.cover .sub { margin-top: 16px; font-size: 15px; line-height: 1.8; color: #3E3E3B; }
 .t-grid.quote blockquote { font-size: 20px; line-height: 1.7; font-weight: 700; color: #151515; }
 .t-grid.quote .mark { font-family: 'Kaiti SC', 'STKaiti', serif; font-size: 64px; line-height: .8; height: 36px; color: #2F6BFF; }
 .t-grid.end .name { font-size: 22px; font-weight: 800; color: #151515; }
@@ -155,11 +144,5 @@ body.export #deck { display: flex; flex-direction: column; gap: 20px; padding: 0
 .t-post figure .img { border-radius: 14px; box-shadow: 0 0 0 1px var(--line); }
 .t-post figcaption { color: var(--muted); }
 .t-post blockquote.inline { padding-left: 12px; border-left: 3px solid var(--line); }
-.t-post.cover h1 { margin-top: 4px; font-size: 22px; line-height: 1.45; font-weight: 800; color: var(--ink); }
-.t-post.cover .sub { margin-top: 12px; font-size: 15px; line-height: 1.6; color: var(--text); }
-.t-post.cover .date { font-size: 12.5px; color: var(--muted); }
-.t-post.cover .actions { display: flex; justify-content: space-between; margin-top: 10px; padding: 10px 4px 0;
-  border-top: 1px solid var(--rule); }
-.t-post.cover .actions svg { stroke: var(--muted); }
 .t-post.quote blockquote { font-size: 19px; line-height: 1.6; font-weight: 700; color: var(--ink); }
 .t-post.end .line { font-size: 17px; line-height: 1.6; color: var(--text); }

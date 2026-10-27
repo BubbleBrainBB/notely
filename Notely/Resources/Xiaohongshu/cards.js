@@ -1,6 +1,7 @@
 // Xiaohongshu cards: lays a note's blocks (XhsDeck.swift) out as 3:4 or 1:1
-// cards in one of the templates (design boards ㊿, 51) and decides where the
-// cards break (board 52): every way of breaking a section is scored, and the
+// cards in one of the templates (design boards ㊿, 51), starting with the
+// note's first words (the title is the post's, not a card's), and decides
+// where the cards break (board 52): every way of breaking a section is scored, and the
 // one that fills each card evenly, keeps each image with the sentence that
 // leads into it and never strands a heading or a single line wins.
 //
@@ -71,20 +72,6 @@
     }, '');
   }
 
-  /** A title breaks between words only: Latin words and model names
-   * (Kimi K3.1 Pro) stay whole, and so do Chinese words (发布). */
-  function keepWords(html) {
-    const latin = html.replace(/(^|[^A-Za-z0-9.\-+<\/="])([A-Za-z0-9][A-Za-z0-9.\-+]*(?: [A-Za-z0-9][A-Za-z0-9.\-+]*)*)(?![^<]*>)/g,
-      (match, before, words) => words.length <= 18 && words.includes(' ') ? `${before}<span class="nw">${words}</span>` : match);
-    if (typeof Intl === 'undefined' || !Intl.Segmenter) return latin;
-    const segmenter = new Intl.Segmenter('zh', { granularity: 'word' });
-    return latin.split(/(<[^>]+>)/).map((part) => {
-      if (!part || part[0] === '<' || !CJK.test(part)) return part;
-      return [...segmenter.segment(part)].map(({ segment, isWordLike }) =>
-        isWordLike && segment.length > 1 && CJK.test(segment) ? `<span class="nw">${segment}</span>` : segment).join('');
-    }).join('');
-  }
-
   // ───────── Input ─────────
 
   let input = null;
@@ -129,7 +116,8 @@
   /** A content card around `body`; `runhead` names the section it continues. */
   function contentCard(body, { runhead = '', index = 0, total = 0, centered = false } = {}) {
     const page = pageLabel(index, total);
-    const classes = `card ${templateClass()}${centered ? ' centered' : ''}${family === 'post' ? ' thread' : ''}`;
+    // Every post after the first hangs from the one before it.
+    const classes = `card ${templateClass()}${centered ? ' centered' : ''}${family === 'post' && index > 1 ? ' thread' : ''}`;
     let top = '';
     if (family === 'post') top = who(page);
     else if (family === 'grid') top = `<div class="head"><span class="num">${index || ''}</span>${runhead ? `<span class="runhead">${escape(runhead)}</span>` : ''}</div>`;
@@ -453,38 +441,6 @@
 
   // ───────── Cards ─────────
 
-  function titleHTML(cover) {
-    let title = escape(cover.title);
-    if (family !== 'post') title = title.replace(/[。.]$/, '');
-    title = space(title);
-    if (cover.highlight) {
-      const phrase = space(escape(cover.highlight));
-      const at = title.indexOf(phrase);
-      if (at >= 0) title = title.slice(0, at) + `<span class="hl nw">${phrase}</span>` + title.slice(at + phrase.length);
-    }
-    return keepWords(title);
-  }
-
-  function coverCard(cover, total) {
-    const page = pageLabel(1, total);
-    const kicker = cover.kicker ? `<span class="kicker">${escape(cover.kicker)}</span>` : '';
-    const sub = cover.subtitle ? `<p class="sub">${space(cover.subtitle)}</p>` : '';
-    const cls = `card cover ${templateClass()}`;
-    if (family === 'post') {
-      const icons = ['<path d="M4 11.5a7.5 7 0 0 1 7.5-7h1a7.5 7 0 0 1 0 15H11l-4.5 3v-3.6A7 7 0 0 1 4 11.5z"/>',
-        '<path d="M7 4l-3 3 3 3M4 7h11a3 3 0 0 1 3 3v2M17 20l3-3-3-3M20 17H9a3 3 0 0 1-3-3v-2"/>',
-        '<path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/>',
-        '<path d="M7 3.5h10v17l-5-3.5-5 3.5z"/>']
-        .map((path) => `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`).join('');
-      return `<div class="${cls}" style="--card-h:${cardH}px">${who(page)}<div class="body" style="gap:0"><h1>${titleHTML(cover)}</h1>${sub}<div class="spacer"></div>` +
-        `<span class="date">${escape(cover.date)}</span><div class="actions" aria-hidden="true">${icons}</div></div></div>`;
-    }
-    const squiggle = family === 'grid'
-      ? '<svg class="squiggle" aria-hidden="true" width="170" height="14" viewBox="0 0 170 14"><path d="M3 9 C 30 3, 58 13, 88 7 S 140 4, 166 8" stroke="#2F6BFF" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>'
-      : '';
-    return `<div class="${cls}" style="--card-h:${cardH}px"><div class="body" style="gap:0">${kicker}<h1>${titleHTML(cover)}</h1>${squiggle}${sub}<div class="spacer"></div></div>${foot(page)}</div>`;
-  }
-
   function quoteCard(quote, index, total) {
     const mark = family === 'post' ? '' : '<div class="mark" aria-hidden="true">“</div>';
     const body = `${mark}<blockquote>${space(quote.html)}</blockquote>`;
@@ -498,18 +454,6 @@
       ? line || '<p class="line"></p>'
       : `<div class="name">${escape(author.name || '')}</div>${author.handle ? `<div class="handle">${escape(author.handle)}</div>` : ''}${line}`;
     return contentCard(body, { index, total, centered: true }).replace('class="card ', 'class="card end ');
-  }
-
-  /** Shrinks the cover's title until the cover holds it. */
-  function fitCover(card) {
-    const body = card.querySelector('.body');
-    const title = card.querySelector('h1');
-    if (!body || !title) return;
-    let size = parseFloat(getComputedStyle(title).fontSize);
-    while (body.scrollHeight > body.clientHeight + 1 && size > 18) {
-      size -= 1;
-      title.style.fontSize = `${size}px`;
-    }
   }
 
   // ───────── Layout ─────────
@@ -553,11 +497,13 @@
       }
     });
 
+    // No cover: the post's title is Xiaohongshu's own, and the cards start
+    // with the note's first words.
     const withEnd = !!(input.endCard && input.endCard.on);
-    const total = 1 + plans.length + (withEnd ? 1 : 0);
-    const html = [coverCard(deck.cover, total)];
+    const total = plans.length + (withEnd ? 1 : 0);
+    const html = [];
     plans.forEach((plan, p) => {
-      const index = p + 2;
+      const index = p + 1;
       if (plan.quote) { html.push(quoteCard(plan.quote, index, total)); return; }
       const { card } = plan;
       const items = card.items.map((item) => {
@@ -587,14 +533,13 @@
       document.body.style.setProperty('--scale', String(scale));
       holder.innerHTML = html.map((card, i) => `<div class="cell" data-index="${i}">${card}</div>`).join('');
     }
-    holder.querySelectorAll('.card.cover').forEach(fitCover);
     measure().innerHTML = '';
 
-    if (plans.length + 1 > 18) {
+    if (total > 18) {
       warnings.push(`${total} cards; Xiaohongshu takes 18 at most. Merge a few sections or leave some out.`);
     }
 
-    cardIds = [[], ...plans.map((plan) => plan.ids), ...(withEnd ? [[]] : [])];
+    cardIds = [...plans.map((plan) => plan.ids), ...(withEnd ? [[]] : [])];
     const result = { count: total, warnings };
     if (exporting) {
       await Promise.all([...holder.querySelectorAll('img')].map((img) => img.decode().catch(() => null)));

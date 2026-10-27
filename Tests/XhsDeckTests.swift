@@ -1,7 +1,7 @@
 import Foundation
 
 // Standalone test runner for XhsDeck: how a note becomes the Xiaohongshu
-// card layout's blocks — sentences, image leads, cover, caption, warnings.
+// card layout's blocks — sentences, image leads, title, caption, warnings.
 //
 //     swiftc Notely/Services/XhsDeck.swift Notely/Services/FrontmatterParser.swift Notely/Services/TagExtractor.swift Tests/XhsDeckTests.swift -o /tmp/xhs-tests
 //     /tmp/xhs-tests
@@ -22,8 +22,7 @@ enum XhsDeckTests {
     }
 
     static func deck(_ markdown: String, file: String = "Note.md") -> XhsDeck {
-        XhsDeck.make(markdown: markdown, notePath: "/tmp/notes/\(file)", fileName: file,
-                     updatedAt: Date(timeIntervalSince1970: 0))
+        XhsDeck.make(markdown: markdown, notePath: "/tmp/notes/\(file)", fileName: file)
     }
 
     static func main() {
@@ -41,18 +40,18 @@ enum XhsDeckTests {
         expect(XhsDeck.inline("看 [这里](https://x.y) 和 `**不加粗**`"),
                "看 <span class=\"link\">这里</span> 和 <code>**不加粗**</code>", "links and code")
 
-        // The title comes from the leading heading, which leaves the cards.
+        // The title comes from the leading heading, which leaves the cards:
+        // they start with the note's first words, short or not.
         let titled = deck("# 标题\n\n第一段很短。\n\n第二段。")
-        expect(titled.cover.title, "标题", "title from H1")
-        expect(titled.cover.subtitle, "第一段很短。", "short first paragraph is the subtitle")
-        expect(titled.blocks.map(\.kind), [.paragraph], "H1 and subtitle leave the blocks")
+        expect(titled.title, "标题", "title from H1")
+        expect(titled.blocks.map(\.kind), [.paragraph, .paragraph], "H1 leaves the blocks; the first paragraph stays")
 
         // The title falls back to the file name; front matter wins over both.
-        expect(deck("正文。", file: "刚刚.md").cover.title, "刚刚", "title from file name")
+        expect(deck("正文。", file: "刚刚.md").title, "刚刚", "title from file name")
         let fm = deck("---\ntitle: 前言\nxhs_title: 短标题\ntags: [AI/新模型]\n---\n\n# 不是这个\n\n正文。")
-        expect(fm.cover.title, "前言", "front matter title")
         expect(fm.title, "短标题", "xhs_title for the post")
-        expect(fm.cover.kicker, "新模型", "kicker is the first tag's last part")
+        expect(deck("---\ntitle: 前言\n---\n\n正文。").title, "前言", "front matter title")
+        expect(fm.caption.hasSuffix("#新模型"), true, "tags end the caption as topics")
 
         // An image takes the colon sentence before it, and its alt as caption.
         let figure = deck("开头很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长的一段。\n\n基于 K3 做的后训练。下面是官方放出的 Benchmark：\n\n![官方 Benchmark](https://e.com/a.png)\n## 代码\n必须要提一下。")
@@ -84,22 +83,28 @@ enum XhsDeckTests {
         // Leave Out of Cards hides a block by its id, which survives other edits.
         let full = deck("长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长。\n\n别放这段。")
         let hidden = XhsDeck.make(markdown: "改了开头长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长长。\n\n别放这段。",
-                                  notePath: "/tmp/notes/Note.md", fileName: "Note.md", updatedAt: Date(),
+                                  notePath: "/tmp/notes/Note.md", fileName: "Note.md",
                                   leftOut: [full.blocks[1].id])
         expect(hidden.blocks.count, 1, "left out")
         expect(hidden.leftOutCount, 1, "left out count")
 
-        // The cover marks the bold phrase that is also in the title.
         let kimi = deck("# 刚刚，月之暗面发布Kimi K3.1 Pro。\n\n等啊等，终于等到了**Kimi K3.1 Pro**。\n\n基于**K3**做的。")
-        expect(kimi.cover.highlight, "Kimi K3.1 Pro", "highlight")
         expect(kimi.caption, "等啊等，终于等到了Kimi K3.1 Pro。\n\n基于K3做的。", "caption")
+
+        // The caption is the whole note: headings, paragraphs, lists, quotes; no images or code.
+        let whole = deck("# 标题\n\n很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长的第一段。\n\n![](https://e.com/a.png)\n\n## 代码\n\n- 一\n- 二\n\n> 金句。\n\n```\nx()\n```\n\n最后一段。")
+        expect(whole.caption, "很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长很长的第一段。\n\n代码\n\n• 一\n• 二\n\n金句。\n\n最后一段。", "whole note caption")
+
+        // The caption is never cut short, however long the opening is.
+        let long = String(repeating: "很长的开头", count: 300) + "。"
+        expect(deck("# 标题\n\n\(long)").caption, long, "long caption kept whole")
 
         // The real note, if it is on this Mac.
         let real = NSString(string: "~/Documents/My Personal Digital Garden/刚刚，月之暗面发布Kimi K3.1 Pro。.md").expandingTildeInPath
         if let text = try? String(contentsOfFile: real, encoding: .utf8) {
-            let deck = XhsDeck.make(markdown: text, notePath: real, fileName: (real as NSString).lastPathComponent, updatedAt: Date())
+            let deck = XhsDeck.make(markdown: text, notePath: real, fileName: (real as NSString).lastPathComponent)
             print("Kimi note: \(deck.blocks.count) blocks, warnings: \(deck.warnings)")
-            expect(deck.cover.subtitle, "等啊等，终于等到了<b>Kimi K3.1 Pro</b>。", "real subtitle")
+            expect(deck.blocks.first?.sentences, ["等啊等，终于等到了<b>Kimi K3.1 Pro</b>。"], "real note starts with its first words")
         }
 
         print(failures == 0 ? "All \(checks) XhsDeck checks passed." : "\(failures) of \(checks) checks failed.")

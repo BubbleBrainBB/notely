@@ -2,8 +2,9 @@ import Foundation
 
 /// The Xiaohongshu Cards extension's input (design boards ㊾, 51, 52): a note
 /// broken into the blocks the card layout paginates
-/// (Resources/Xiaohongshu/cards.js), plus the cover, the post's title and
-/// caption, and what can't go on cards.
+/// (Resources/Xiaohongshu/cards.js), plus the post's title and caption, and
+/// what can't go on cards. The title is the post's, not a card's: the cards
+/// start with the note's first words.
 ///
 /// Foundation-only, so Tests/XhsDeckTests.swift runs it directly.
 struct XhsDeck: Codable, Equatable {
@@ -35,37 +36,21 @@ struct XhsDeck: Codable, Equatable {
         var text: String?
     }
 
-    struct Cover: Codable, Equatable {
-        var title: String
-        /// The words of the title that the note sets in bold, marked on the cover.
-        var highlight: String?
-        /// The note's first tag.
-        var kicker: String?
-        /// The first paragraph when it is short, as inline HTML.
-        var subtitle: String?
-        /// When the note was last edited, for the Post template.
-        var date: String
-    }
-
-    var cover: Cover
     var blocks: [Block]
     /// The post's title: `xhs_title` in the front matter, else the note's.
     var title: String
-    /// The post's text: the opening paragraphs and the note's tags.
+    /// The post's text: the whole note as plain text, and its tags.
     var caption: String
     /// What can't go on cards, in English.
     var warnings: [String]
     /// Blocks hidden with Leave Out of Cards.
     var leftOutCount: Int
 
-    /// Xiaohongshu takes this many characters of title and caption.
-    static let titleLimit = 20
-    static let captionLimit = 1000
     static let cardLimit = 18
 
     // MARK: - Building
 
-    static func make(markdown: String, notePath: String, fileName: String, updatedAt: Date,
+    static func make(markdown: String, notePath: String, fileName: String,
                      leftOut: Set<String> = []) -> XhsDeck {
         let source = markdown as NSString
         let frontmatter = Frontmatter.parse(source)
@@ -80,7 +65,7 @@ struct XhsDeck: Codable, Equatable {
         var warnings: [String] = []
 
         // The title: the front matter's, else a leading # heading (left
-        // off the cards: it is the cover), else the file name.
+        // off the cards: it is the post's title), else the file name.
         var title = field("title")
         if let first = raw.first, first.kind == .heading, first.level == 1 {
             if title == nil { title = plain(first.markdown) }
@@ -121,23 +106,10 @@ struct XhsDeck: Codable, Equatable {
         let leftOutCount = raw.filter { leftOut.contains($0.id) }.count
         raw.removeAll { leftOut.contains($0.id) }
 
-        // A short first paragraph is the cover's subtitle.
-        var subtitle: String?
-        if let index = raw.firstIndex(where: { $0.kind != .pageBreak }), raw[index].kind == .paragraph,
-           plain(raw[index].markdown).count <= 40 {
-            subtitle = inline(raw[index].markdown)
-            raw.remove(at: index)
-        }
-
         let tags = TagExtractor.frontmatterTags(from: markdown).isEmpty
             ? TagExtractor.extract(from: body) : TagExtractor.frontmatterTags(from: markdown)
-        let blocks = withLeads(raw)
-        let cover = Cover(title: noteTitle, highlight: highlight(in: noteTitle, markdown: body),
-                          kicker: tags.first.map { $0.split(separator: "/").last.map(String.init) ?? $0 },
-                          subtitle: subtitle, date: dateLabel(updatedAt, chinese: containsCJK(noteTitle)))
-        return XhsDeck(cover: cover, blocks: blocks, title: field("xhs_title") ?? noteTitle,
-                       caption: caption(raw, subtitle: subtitle, tags: tags), warnings: warnings,
-                       leftOutCount: leftOutCount)
+        return XhsDeck(blocks: withLeads(raw), title: field("xhs_title") ?? noteTitle,
+                       caption: caption(raw, tags: tags), warnings: warnings, leftOutCount: leftOutCount)
     }
 
     // MARK: - Blocks
@@ -481,47 +453,29 @@ struct XhsDeck: Codable, Equatable {
         return "<table><thead><tr>\(header)</tr></thead><tbody>\(body)</tbody></table>"
     }
 
-    // MARK: - Cover and caption
+    // MARK: - Caption
 
-    /// The longest phrase the note sets in bold that is also in the title.
-    private static func highlight(in title: String, markdown: String) -> String? {
-        let regex = try! NSRegularExpression(pattern: #"\*\*(.+?)\*\*"#)
-        let ns = markdown as NSString
-        let squeezed = title.replacingOccurrences(of: " ", with: "").lowercased()
-        var best: String?
-        for match in regex.matches(in: markdown, range: NSRange(location: 0, length: ns.length)) {
-            let phrase = plain(ns.substring(with: match.range(at: 1)))
-            let key = phrase.replacingOccurrences(of: " ", with: "").lowercased()
-            guard key.count >= 2, squeezed.contains(key) else { continue }
-            if phrase.count > (best?.count ?? 0) { best = phrase }
+    /// The whole note as plain text — headings, paragraphs, quotes and
+    /// lists, in order — then the note's tags as topics. Images, code and
+    /// tables are on the cards only.
+    private static func caption(_ raw: [RawBlock], tags: [String]) -> String {
+        var parts: [String] = []
+        for block in raw {
+            switch block.kind {
+            case .heading, .paragraph, .quote:
+                parts.append(plain(block.markdown))
+            case .list:
+                let items = block.items ?? []
+                parts.append(items.enumerated().map { index, item in
+                    (block.ordered == true ? "\(index + 1). " : "• ") + plain(item)
+                }.joined(separator: "\n"))
+            case .figure, .code, .table, .pageBreak:
+                break
+            }
         }
-        return best
-    }
-
-    /// The opening paragraphs, whole, until there is enough to read
-    /// (about 200 characters), then the note's tags as topics.
-    private static func caption(_ raw: [RawBlock], subtitle: String?, tags: [String]) -> String {
-        var paragraphs: [String] = []
-        if let subtitle { paragraphs.append(plainHTML(subtitle)) }
-        var length = paragraphs.first?.count ?? 0
-        for block in raw where block.kind == .paragraph || block.kind == .quote {
-            guard length < 200 else { break }
-            let text = plain(block.markdown)
-            paragraphs.append(text)
-            length += text.count
-        }
-        var caption = paragraphs.joined(separator: "\n\n")
+        let caption = parts.filter { !$0.isEmpty }.joined(separator: "\n\n")
         let topics = tags.map { "#" + ($0.split(separator: "/").last.map(String.init) ?? $0) }.joined(separator: " ")
-        let room = captionLimit - (topics.isEmpty ? 0 : topics.count + 2)
-        if caption.count > room { caption = String(caption.prefix(max(0, room - 1))) + "…" }
         return topics.isEmpty ? caption : caption + "\n\n" + topics
-    }
-
-    private static func dateLabel(_ date: Date, chinese: Bool) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: chinese ? "zh_CN" : "en_US_POSIX")
-        formatter.dateFormat = chinese ? "HH:mm · yyyy年M月d日" : "h:mm a · MMM d, yyyy"
-        return formatter.string(from: date)
     }
 
     // MARK: - Images
@@ -564,7 +518,6 @@ struct XhsDeck: Codable, Equatable {
         }
     }
 
-    static func containsCJK(_ text: String) -> Bool { text.contains(where: isCJK) }
 
     /// FNV-1a, as hex: short and the same on every launch.
     private static func fingerprint(_ text: String) -> String {

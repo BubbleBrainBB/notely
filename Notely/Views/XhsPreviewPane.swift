@@ -75,7 +75,7 @@ private struct PreviewSwitch: View {
 }
 
 /// The Xiaohongshu side of the preview (board ㊾ ①): the template, the
-/// post's title and its count, the cards two by two, the caption, Export.
+/// post's title and its length, the cards two by two, the caption, Export.
 struct XhsPreviewPane: View {
     @Environment(AppModel.self) private var appModel
     @Environment(FileNoteStore.self) private var store
@@ -192,10 +192,10 @@ struct XhsPreviewPane: View {
             .font(.notely(12))
             .foregroundColor(.secondaryText)
             .help("The post's title. Changing it here doesn't change the note.")
-            Text("\(count)/\(XhsDeck.titleLimit)")
+            Text("\(count)")
                 .font(.notely(11.5).monospacedDigit())
-                .foregroundColor(count > XhsDeck.titleLimit ? Color(nsColor: .adaptive(light: 0xB4610E, dark: 0xE7A35C)) : .tertiaryText)
-                .help(count > XhsDeck.titleLimit ? "Xiaohongshu titles take 20 characters." : "")
+                .foregroundColor(.tertiaryText)
+                .help("Characters in the title")
             QuietLink(title: "Copy title") { XhsCards.copyText(title) }
         }
         .padding(.horizontal, 14)
@@ -239,9 +239,10 @@ struct XhsPreviewPane: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text("Caption").font(.notely(12, weight: .semibold)).foregroundColor(.primaryText)
-                Text("\(XhsCards.length(caption)) / \(XhsDeck.captionLimit)")
+                Text("\(XhsCards.length(caption))")
                     .font(.notely(11.5).monospacedDigit())
-                    .foregroundColor(XhsCards.length(caption) > XhsDeck.captionLimit ? .red : .tertiaryText)
+                    .foregroundColor(.tertiaryText)
+                    .help("Characters in the caption")
                 Spacer()
                 if choices.caption != nil {
                     QuietLink(title: "Reset") { choices.caption = nil }
@@ -255,7 +256,7 @@ struct XhsPreviewPane: View {
             .font(.notely(12))
             .foregroundColor(.secondaryText)
             .scrollContentBackground(.hidden)
-            .frame(height: 74)
+            .frame(height: 120)
         }
         .padding(.horizontal, 14)
         .padding(.top, 10)

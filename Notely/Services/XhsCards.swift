@@ -109,11 +109,8 @@ enum XhsCards {
     }
 
     static func deck(for note: AppModel.NoteText, choices: NoteChoices) -> XhsDeck {
-        let attributes = try? FileManager.default.attributesOfItem(atPath: note.path)
-        return XhsDeck.make(markdown: note.markdown, notePath: note.path,
-                            fileName: (note.path as NSString).lastPathComponent,
-                            updatedAt: attributes?[.modificationDate] as? Date ?? Date(),
-                            leftOut: Set(choices.leftOut))
+        XhsDeck.make(markdown: note.markdown, notePath: note.path,
+                     fileName: (note.path as NSString).lastPathComponent, leftOut: Set(choices.leftOut))
     }
 
     static func input(for deck: XhsDeck, choices: NoteChoices) -> Input {
@@ -131,7 +128,7 @@ enum XhsCards {
     static func title(_ deck: XhsDeck, _ choices: NoteChoices) -> String { choices.title ?? deck.title }
     static func caption(_ deck: XhsDeck, _ choices: NoteChoices) -> String { choices.caption ?? deck.caption }
 
-    /// Characters as Xiaohongshu counts them for its limits.
+    /// Characters, as the preview counts them for the title and caption.
     static func length(_ text: String) -> Int { text.count }
 
     // MARK: - Export
