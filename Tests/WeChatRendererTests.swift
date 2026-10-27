@@ -78,6 +78,21 @@ enum WeChatRendererTests {
         expect(video.html.contains("在此插入视频"), true, "the video becomes its placeholder card")
         expect(video.html.contains("还有一个是台灯"), true, "the next line stays")
 
+        // ── Obsidian [[links]] and ![[embeds]] ──
+        let found = ["10月14日.mp4": "/tmp/notes/attachments/10月14日.mp4", "a b.png": "/tmp/notes/a b.png"]
+        func wiki(_ markdown: String) -> String { WeChatRenderer.resolvingWikiLinks(markdown) { found[$0] } }
+        expect(wiki("效果是这样：\n\n![[10月14日.mp4]]"), "效果是这样：\n\n![](</tmp/notes/attachments/10月14日.mp4>)", "video embed resolves")
+        expect(wiki("![[a b.png|300]]"), "![](</tmp/notes/a b.png>)", "image embed, size dropped")
+        expect(wiki("![[missing.mp4]]"), "![](<missing.mp4>)", "unfound video keeps its name")
+        expect(wiki("见 [[另一篇笔记]] 和 [[笔记|这里]]。"), "见 另一篇笔记 和 这里。", "links keep their words")
+        expect(wiki("[[笔记#小节]]、[[#小节]]、![[笔记]]"), "笔记 › 小节、小节、笔记", "headings and note embeds")
+        expect(wiki("`[[不动]]`\n```\n[[也不动]]\n```"), "`[[不动]]`\n```\n[[也不动]]\n```", "code stays as is")
+        let embedded = try renderer.render(markdown: wiki("效果是这样：\n![[10月14日.mp4]]\n它会根据[[食材]]生成。"),
+                                           notePath: "/tmp/notes/note.md", theme: .blueprint)
+        expect(embedded.html.contains("在此插入视频"), true, "the embedded video becomes its placeholder card")
+        expect(embedded.html.contains("[["), false, "no brackets left")
+        expect(embedded.warnings.contains { $0.hasPrefix("Obsidian Wiki") }, false, "no wiki warning")
+
         // ── Same output as the skill ──
         let skill = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
             ?? NSString(string: "~/wechat-markdown-note/skills/wechat-black-red").expandingTildeInPath)

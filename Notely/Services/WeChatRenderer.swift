@@ -95,6 +95,60 @@ final class WeChatRenderer {
 
     // MARK: - Embeds
 
+    private static let wikiLink = try! NSRegularExpression(pattern: #"`[^`\n]*`|(!?)\[\[([^\[\]\n]+)\]\]"#)
+    private static let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "heic", "avif"]
+    private static let videoExtensions: Set<String> = ["mp4", "mov", "m4v", "webm", "avi", "mkv"]
+
+    /// `markdown` with Obsidian's `![[…]]` and `[[…]]` turned into what the
+    /// renderer reads: an embedded image or video becomes `![](path)`, found
+    /// by `resolve` (the editor's lookup) or left as its name; any other
+    /// embed or link keeps only its words (the alias after `|`, else the
+    /// note's name). Code spans and fenced code stay as they are.
+    static func resolvingWikiLinks(_ markdown: String, resolve: (String) -> String?) -> String {
+        guard markdown.contains("[[") else { return markdown }
+        var lines: [String] = []
+        var fence: String?
+        for line in markdown.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let open = fence {
+                if trimmed.hasPrefix(open) { fence = nil }
+                lines.append(line)
+                continue
+            }
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                fence = String(trimmed.prefix(3))
+                lines.append(line)
+                continue
+            }
+            let text = line as NSString
+            var result = ""
+            var last = 0
+            for match in wikiLink.matches(in: line, range: NSRange(location: 0, length: text.length)) {
+                guard match.range(at: 2).location != NSNotFound else { continue }
+                result += text.substring(with: NSRange(location: last, length: match.range.location - last))
+                last = match.range.location + match.range.length
+                let isEmbed = match.range(at: 1).length > 0
+                let inside = text.substring(with: match.range(at: 2))
+                let parts = inside.split(separator: "|", maxSplits: 1).map { String($0).trimmingCharacters(in: .whitespaces) }
+                let target = parts.first ?? ""
+                let kind = (target as NSString).pathExtension.lowercased()
+                if isEmbed, imageExtensions.contains(kind) || videoExtensions.contains(kind) {
+                    result += "![](<\(resolve(target) ?? target)>)"
+                } else if parts.count > 1, !parts[1].isEmpty {
+                    result += parts[1]
+                } else {
+                    // `Note#Heading` reads as "Note › Heading", `#Heading` as the heading.
+                    let pieces = target.split(separator: "#", omittingEmptySubsequences: true)
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    result += pieces.joined(separator: " › ")
+                }
+            }
+            result += text.substring(from: last)
+            lines.append(result)
+        }
+        return lines.joined(separator: "\n")
+    }
+
     private static let embedLine = try! NSRegularExpression(pattern: #"^!\[[^\]\n]*\]\([^)\n]*\)$"#)
 
     /// `markdown` with a blank line before and after each line that holds

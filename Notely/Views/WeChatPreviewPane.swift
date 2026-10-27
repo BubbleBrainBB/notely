@@ -112,12 +112,16 @@ enum WeChatCopy {
 
     /// Off the main thread: a note with local images reads and encodes them.
     static func render(_ note: AppModel.NoteText, theme: WeChatRenderer.Theme) async throws -> WeChatRenderer.Article {
+        // `![[…]]` files are found the way the editor finds them.
+        let markdown = await MainActor.run {
+            WeChatRenderer.resolvingWikiLinks(note.markdown) { ImageLoader.shared.resolveEmbed($0)?.path }
+        }
         // Off the main thread from the start: the first call also loads the renderer.
-        try await Task.detached(priority: .userInitiated) {
+        return try await Task.detached(priority: .userInitiated) {
             guard let renderer = WeChatRenderer.shared else {
                 throw WeChatRenderer.RenderError(message: "The WeChat renderer is missing from this build.")
             }
-            return try renderer.render(markdown: note.markdown, notePath: note.path, theme: theme)
+            return try renderer.render(markdown: markdown, notePath: note.path, theme: theme)
         }.value
     }
 
