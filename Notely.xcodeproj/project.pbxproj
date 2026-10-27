@@ -44,6 +44,7 @@
 		9BD5B3FDBBAEF11946D028E3 /* ShiyeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = D892DF98D0E74759E17A7688 /* ShiyeIcon.swift */; };
 		9F8BF31EB0BC5680357930C5 /* ExternalSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8030200ECD3965B795047411 /* ExternalSync.swift */; };
 		A06CF58A5074A823598CE2BE /* PDFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C87EBAAA255B01773E7334 /* PDFExporter.swift */; };
+		A9B75A32544899697929A407 /* Merge3.swift in Sources */ = {isa = PBXBuildFile; fileRef = F213B177D8B8C3BA88B271F2 /* Merge3.swift */; };
 		B01F02B34597F599660C7FBB /* CodeBlockLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9A16EF59DECE0BFDBD23DD4 /* CodeBlockLayoutManager.swift */; };
 		B3F55969806245A31F0F94E7 /* WysiwygTextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F04AAD312B1139EC7FA8DC /* WysiwygTextView.swift */; };
 		B4AF80B0DC1911A285A8163C /* PageEdgeBlur.swift in Sources */ = {isa = PBXBuildFile; fileRef = D752AEB34CFF5241D9B30456 /* PageEdgeBlur.swift */; };
@@ -137,6 +138,7 @@
 		EA5E10CD49C23658EEA57244 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		ED6F0797BF320978F6417590 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
 		EFA6F511541193EB58C2C2BB /* FrontmatterAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmatterAttachment.swift; sourceTree = "<group>"; };
+		F213B177D8B8C3BA88B271F2 /* Merge3.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Merge3.swift; sourceTree = "<group>"; };
 		F9A16EF59DECE0BFDBD23DD4 /* CodeBlockLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBlockLayoutManager.swift; sourceTree = "<group>"; };
 		FC13FB98F064F67AB2187636 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		FC5ED0A570180C8D5FC1828D /* WindowCloseBehavior.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowCloseBehavior.swift; sourceTree = "<group>"; };
@@ -273,6 +275,7 @@
 				02E74CD2E4CC0B8532F2FAF8 /* LinkRewrite.swift */,
 				4DCE99219CB55CD44FB2276B /* MemoFormat.swift */,
 				423C1E908CB0F870E3BBB81C /* MemoMarkdown.swift */,
+				F213B177D8B8C3BA88B271F2 /* Merge3.swift */,
 				53C87EBAAA255B01773E7334 /* PDFExporter.swift */,
 				68CA4E783C0848DB5608663A /* TagExtractor.swift */,
 				4A7B5B3D54248B16FAE60081 /* TitleExtractor.swift */,
@@ -419,6 +422,7 @@
 				E40D2FC73ECFF62D750A9BD3 /* MemoMarkdown.swift in Sources */,
 				629F37287A9E1C3EB743CCC8 /* MemoText.swift in Sources */,
 				D33A8A647BFA55437EB1DF06 /* MemosView.swift in Sources */,
+				A9B75A32544899697929A407 /* Merge3.swift in Sources */,
 				12B288725023FC31275097E7 /* NoteCardSummary.swift in Sources */,
 				B6E59F1EB3D9260C1375C59C /* NoteModel.swift in Sources */,
 				32628CC8FB36EA9CFCE7D662 /* NoteTabs.swift in Sources */,

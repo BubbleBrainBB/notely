@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct EditorView: View {
@@ -14,6 +15,8 @@ struct EditorView: View {
     /// The text as typed, kept without redrawing anything; `displayedText`
     /// (outline, counts) catches up after a pause in typing.
     @State private var live = LiveText()
+    /// The text view, to merge a change from outside into it in place.
+    @State private var editorHandle = EditorHandle()
     @State private var catchUpTask: Task<Void, Never>? = nil
     /// Bumped when `displayedText` must replace the editor's text.
     @State private var textRevision = 0
@@ -75,9 +78,9 @@ struct EditorView: View {
                 loadNote()
             }
             // The open file changed on disk (external editor → store reload). Pull it
-            // in live, unless the user has unsaved local edits that would be lost.
+            // in live, merged with anything typed here that isn't saved yet.
             .onChange(of: note.content) { _, newContent in
-                adoptExternalChangeIfClean(newContent)
+                reconcileExternalChange(newContent)
             }
     }
 
@@ -98,6 +101,7 @@ struct EditorView: View {
                         : nil,
                     focusesOnAppear: isDraft,
                     placeKey: isDraft ? nil : note.id,
+                    handle: editorHandle,
                     onTextChange: handleTextChange
                 )
                 .frame(maxWidth: .infinity)
@@ -127,11 +131,17 @@ struct EditorView: View {
     }
 
     /// Reconcile an on-disk change to the currently open note with the editor.
-    private func adoptExternalChangeIfClean(_ newContent: String) {
+    private func reconcileExternalChange(_ newContent: String) {
         switch ExternalSync.resolve(disk: newContent, displayed: live.text, lastSynced: lastSyncedContent) {
         case .ignore:
             lastSyncedContent = newContent
         case .adopt:
+            // In place when the text view takes it: the caret stays put, and
+            // ⌘Z takes the change back.
+            let previous = lastSyncedContent
+            lastSyncedContent = newContent
+            if editorHandle.replaceMarkdown(with: newContent) { return }
+            lastSyncedContent = previous
             catchUpTask?.cancel()
             live.text = newContent
             displayedText = newContent
@@ -139,8 +149,11 @@ struct EditorView: View {
             lastSyncedContent = newContent
             updateCounts(from: newContent)
             publishPreview(newContent)
-        case .keepLocal:
-            break
+        case .merge:
+            // Typed here and changed outside: save now, which merges the two
+            // (FileNoteStore.saveContent) and puts the merge on screen.
+            saveTask?.cancel()
+            save(live.text, base: lastSyncedContent, to: note.id, tab: appModel.activeTabId)
         }
     }
 
@@ -196,15 +209,54 @@ struct EditorView: View {
         let targetId = note.id
         // Only the active tab has an editor, so this is the tab being typed in.
         let tabId = appModel.activeTabId
+        // What the file held when this text was typed, for the save to tell
+        // a change from outside meanwhile.
+        let base = lastSyncedContent
         saveTask?.cancel()
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            // A draft's first save puts it in the library: its tab now shows
-            // that note, and the sidebar selects it.
-            if store.saveContent(content, to: targetId) {
-                appModel.adoptDraft(targetId, inTab: tabId)
-            }
+            save(content, base: base, to: targetId, tab: tabId)
+        }
+    }
+
+    private func save(_ content: String, base: String, to targetId: String, tab tabId: UUID) {
+        let result = store.saveContent(content, to: targetId, basedOn: base)
+        // A draft's first save puts it in the library: its tab now shows
+        // that note, and the sidebar selects it.
+        if result.adoptedDraft {
+            appModel.adoptDraft(targetId, inTab: tabId)
+        }
+        guard note.id == targetId, let written = result.written else { return }
+        if written == content {
+            lastSyncedContent = written
+        } else if live.text == content {
+            // Merged with a change from outside: show the merge. When the
+            // text view can't take it now (an input method composing), the
+            // file keeps the merge and the next save merges again.
+            let previous = lastSyncedContent
+            lastSyncedContent = written
+            if !editorHandle.replaceMarkdown(with: written) { lastSyncedContent = previous }
+        }
+        if let copy = result.conflictCopy { showConflictCopy(copy) }
+    }
+
+    /// Both sides changed the same paragraph: the note keeps what was typed
+    /// here; say where the outside version went.
+    private func showConflictCopy(_ copy: FileNote) {
+        let alert = NSAlert()
+        alert.messageText = "This note was also changed outside Notely"
+        alert.informativeText = "Some paragraphs were changed both here and outside. The note keeps your version; "
+            + "the outside version was saved as “\(copy.filename)” in the same folder."
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Open Copy")
+        let respond = { (response: NSApplication.ModalResponse) in
+            if response == .alertSecondButtonReturn { appModel.openNote(copy.id, inNewTab: true) }
+        }
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window, completionHandler: respond)
+        } else {
+            respond(alert.runModal())
         }
     }
 

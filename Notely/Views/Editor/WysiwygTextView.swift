@@ -88,6 +88,16 @@ final class EditorScrollView: NSScrollView {
     }
 }
 
+/// The editor's text view, held by reference for its parent view.
+final class EditorHandle {
+    weak var textView: WysiwygTextView?
+
+    /// See `WysiwygTextView.replaceMarkdown(with:)`.
+    func replaceMarkdown(with markdown: String) -> Bool {
+        textView?.replaceMarkdown(with: markdown) ?? false
+    }
+}
+
 /// SwiftUI wrapper for the WYSIWYG text editor.
 ///
 /// IMPORTANT: This wrapper does NOT use a @Binding for the text content.
@@ -114,6 +124,9 @@ struct WysiwygEditor: NSViewRepresentable {
     /// it is opened again — switching tabs away and back (board ㊴). Nil
     /// for a draft.
     var placeKey: String? = nil
+    /// Lets the parent reach the text view, to merge a change from outside
+    /// into it without moving the caret.
+    var handle: EditorHandle? = nil
     let onTextChange: (String) -> Void
 
     /// Where each note was left: caret, scroll offset, whether it had focus.
@@ -169,6 +182,7 @@ struct WysiwygEditor: NSViewRepresentable {
         textView.focusesOnAppear = focusesOnAppear
         Self.applyTypingOptions(textView, spellCheck: spellCheck, smartPunctuation: smartPunctuation)
         textView.delegate = context.coordinator
+        handle?.textView = textView
         textView.onTextChange = { newText in
             context.coordinator.lastKnownText = newText
             context.coordinator.onTextChange(newText)
@@ -231,6 +245,7 @@ struct WysiwygEditor: NSViewRepresentable {
         // editor would keep routing saves through the FIRST note's closure —
         // writing the displayed note's text into the wrong note's file.
         context.coordinator.onTextChange = onTextChange
+        handle?.textView = textView
 
         // Only sync text when switching notes (external content change),
         // never during typing. We detect this by comparing initialText against
@@ -1016,6 +1031,48 @@ final class WysiwygTextView: NSTextView {
         }
 
         return result as String
+    }
+
+    // MARK: - Replacing the text
+
+    /// Puts `markdown` in place of the note's text as one undoable edit — a
+    /// change from outside merged in — keeping the caret on the text it was
+    /// on and its line where it was in the window. Refused (false) while an
+    /// input method is composing, which a replacement would break.
+    func replaceMarkdown(with markdown: String) -> Bool {
+        guard !hasMarkedText(), let storage = textStorage else { return false }
+        let old = markdownString()
+        guard old != markdown else { return true }
+        let caret = Merge3.mapLocation(rawLocation(forDisplayLocation: selectedRange().location),
+                                       from: old, to: markdown)
+        let clipView = enclosingScrollView?.contentView
+        let caretOffset: CGFloat? = clipView.flatMap { clip in
+            caretLineY().map { clip.convert(NSPoint(x: 0, y: $0), from: self).y - clip.bounds.minY }
+        }
+
+        let all = NSRange(location: 0, length: storage.length)
+        guard shouldChangeText(in: all, replacementString: markdown) else { return false }
+        // Plain body text, not the attributes of whatever came first (an
+        // image attachment would spread over the whole note); the restyle
+        // in didChangeText styles it, collapsing images, tables and math.
+        let body = WysiwygEngine.makeStyle(fontSize: fontSize, lineHeight: lineHeight, fontName: fontName).baseParagraph
+        storage.replaceCharacters(in: all, with: NSAttributedString(string: markdown, attributes: body))
+        // The storage holds raw Markdown until the restyle, so raw = display.
+        setSelectedRange(NSRange(location: min(caret, storage.length), length: 0))
+        didChangeText()
+
+        if let clipView, let caretOffset, let y = caretLineY() {
+            fitFrameToContent()
+            let target = NSPoint(x: clipView.bounds.minX,
+                                 y: clipView.convert(NSPoint(x: 0, y: y), from: self).y - caretOffset)
+            clipView.setBoundsOrigin(clipView.constrainBoundsRect(
+                NSRect(origin: target, size: clipView.bounds.size)).origin)
+            enclosingScrollView?.reflectScrolledClipView(clipView)
+        }
+        // Lines can move up past where the old text ended; redraw all of it
+        // so none is left behind on screen.
+        needsDisplay = true
+        return true
     }
 
     // MARK: - Raw ↔ display coordinate mapping

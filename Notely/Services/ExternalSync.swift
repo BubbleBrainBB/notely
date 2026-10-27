@@ -10,15 +10,17 @@ enum ExternalSync {
     /// What to do when the open note's on-disk content changes underneath the
     /// editor.
     enum Decision: Equatable {
-        /// On-disk content already matches what's displayed (includes the echo of
-        /// the app's own save). Nothing to load; just record that we're in sync.
+        /// Nothing new from outside: on-disk content matches what's displayed,
+        /// or is what the editor last loaded or saved (the echo of the app's
+        /// own save). Nothing to load; just record that we're in sync.
         case ignore
         /// The editor has no unsaved local edits, so the external change can be
         /// pulled in safely.
         case adopt
-        /// The editor has unsaved local edits that diverge from disk. Keep them —
-        /// the pending save will write them out — rather than clobbering the user.
-        case keepLocal
+        /// Both changed: the editor has unsaved local edits and the file was
+        /// changed outside too. Merge the two (`Merge3`) rather than letting
+        /// either overwrite the other.
+        case merge
     }
 
     /// - Parameters:
@@ -27,9 +29,9 @@ enum ExternalSync {
     ///   - lastSynced: the content the editor last loaded or saved (its view of
     ///     what is on disk).
     static func resolve(disk: String, displayed: String, lastSynced: String) -> Decision {
-        if disk == displayed { return .ignore }
+        if disk == displayed || disk == lastSynced { return .ignore }
         if displayed == lastSynced { return .adopt }
-        return .keepLocal
+        return .merge
     }
 
     // MARK: - File-system event filtering
@@ -38,11 +40,16 @@ enum ExternalSync {
     /// not make itself. Used to skip the rescan that our own debounced saves would
     /// otherwise trigger on every keystroke window.
     ///
+    /// A path counts as ours only while the file still holds what we wrote:
+    /// a write from outside that lands right after one of our saves (in the
+    /// same batch of events, even) is still seen.
+    ///
     /// - Parameters:
     ///   - eventPaths: paths reported by the watcher.
-    ///   - selfSaved: paths the app wrote recently (and whose on-disk content it
-    ///     therefore already knows).
-    static func hasExternalChange(eventPaths: [String], selfSaved: Set<String>) -> Bool {
+    ///   - ownWrites: the content the app recently wrote, by path.
+    ///   - read: the file's current content, nil when it can't be read.
+    static func hasExternalChange(eventPaths: [String], ownWrites: [String: String],
+                                  read: (String) -> String?) -> Bool {
         let edited = eventPaths.filter {
             let ext = ($0 as NSString).pathExtension.lowercased()
             return ext == "md" || ext == "markdown"
@@ -50,6 +57,9 @@ enum ExternalSync {
         // No note files in the batch (e.g. a bare directory event) → reload to be
         // safe; it might be a create/delete/rename we should reflect.
         guard !edited.isEmpty else { return true }
-        return !edited.allSatisfy { selfSaved.contains($0) }
+        return edited.contains { path in
+            guard let written = ownWrites[path] else { return true }
+            return read(path) != written
+        }
     }
 }

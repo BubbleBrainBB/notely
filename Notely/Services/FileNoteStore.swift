@@ -18,10 +18,11 @@ final class FileNoteStore {
     var missingWorkspace: URL?
 
     private var eventStream: FSEventStreamRef?
-    /// Paths this store wrote itself, with the time of the write. Lets us ignore
-    /// the file-system events our own saves generate, so typing does not kick off
-    /// a full rescan on every debounced save.
-    private var recentlySavedPaths: [String: Date] = [:]
+    /// What this store wrote itself, by path, with the time of the write. Lets
+    /// us ignore the file-system events our own saves generate, so typing does
+    /// not kick off a full rescan on every debounced save — while a file
+    /// written over from outside right after is still seen.
+    @ObservationIgnored private var ownWrites: [String: (content: String, at: Date)] = [:]
     private var pinnedFiles: Set<String> = []
     private let reloadQueue = DispatchQueue(label: "notely.fileNoteStore.reload", qos: .userInitiated)
     private var reloadGeneration = 0
@@ -144,27 +145,82 @@ final class FileNoteStore {
         return note
     }
 
-    /// Returns true when this save wrote a draft's file for the first time
-    /// (the note is in the library from now on).
+    /// What a save did.
+    struct SaveResult {
+        /// The save wrote a draft's file for the first time (the note is in
+        /// the library from now on).
+        var adoptedDraft = false
+        /// What the file holds now: the content saved or, when the file was
+        /// changed outside meanwhile, the two merged. Nil when nothing was saved.
+        var written: String?
+        /// Where the outside version was kept, when it changed a paragraph
+        /// the content saved changed too.
+        var conflictCopy: FileNote?
+    }
+
+    /// Saves `content`, edited from `base`: what the file held when the
+    /// editing began (the store's last known content when nil). A file
+    /// changed outside since then is merged with `content`, never written
+    /// over (`Merge3`): edits to different paragraphs are both kept; where
+    /// both changed the same paragraph `content` wins, and the outside
+    /// version is kept as a copy beside the note.
     @discardableResult
-    func saveContent(_ content: String, to noteId: String) -> Bool {
+    func saveContent(_ content: String, to noteId: String, basedOn base: String? = nil) -> SaveResult {
         guard let note = notes.first(where: { $0.id == noteId }) ?? movedNote(noteId) else {
-            return saveDraft(content, id: noteId)
+            let adopted = saveDraft(content, id: noteId)
+            return SaveResult(adoptedDraft: adopted, written: adopted ? content : nil)
         }
         // A save from before a move: its links still read from the old folder.
-        let content = note.id == noteId ? content : relinked(content, savedFor: noteId)
-        // Record before writing so the watcher event this triggers is recognized
-        // as our own and does not cause a redundant rescan.
-        recentlySavedPaths[note.url.path] = Date()
-        try? content.write(to: note.url, atomically: true, encoding: .utf8)
+        let moved = note.id != noteId
+        let content = moved ? relinked(content, savedFor: noteId) : content
+        let base = base.map { moved ? relinked($0, savedFor: noteId) : $0 } ?? note.content
+        var result = SaveResult(written: content)
+        let disk = try? String(contentsOf: note.url, encoding: .utf8)
+        if let disk, disk != base, disk != content {
+            let merged = Merge3.merge(base: base, mine: content, theirs: disk)
+            result.written = merged.text
+            if merged.conflicts > 0 { result.conflictCopy = saveConflictCopy(disk, of: note) }
+        }
+        let written = result.written ?? content
+        if disk != written {
+            // Record before writing so the watcher event this triggers is recognized
+            // as our own and does not cause a redundant rescan.
+            recordOwnWrite(written, at: note.url)
+            try? written.write(to: note.url, atomically: true, encoding: .utf8)
+        }
         // Update in-memory without full reload (avoids cursor jump)
         if let idx = notes.firstIndex(where: { $0.id == note.id }) {
-            notes[idx].content = content
-            notes[idx].title = TitleExtractor.extract(from: content)
-            notes[idx].tags = TagExtractor.frontmatterTags(from: content)
+            notes[idx].content = written
+            notes[idx].title = TitleExtractor.extract(from: written)
+            notes[idx].tags = TagExtractor.frontmatterTags(from: written)
             notes[idx].updatedAt = Date()
         }
-        return false
+        return result
+    }
+
+    /// Keeps `text`, the outside version of `note`, beside it as
+    /// "<name> (outside edit 14-10).md", never over another file.
+    private func saveConflictCopy(_ text: String, of note: FileNote) -> FileNote? {
+        let folder = note.url.deletingLastPathComponent()
+        let ext = note.url.pathExtension
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH-mm"
+        let name = "\(note.url.deletingPathExtension().lastPathComponent) (outside edit \(formatter.string(from: Date())))"
+        var url = folder.appendingPathComponent(name).appendingPathExtension(ext)
+        var counter = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = folder.appendingPathComponent("\(name) \(counter)").appendingPathExtension(ext)
+            counter += 1
+        }
+        recordOwnWrite(text, at: url)
+        guard (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil else { return nil }
+        let copy = FileNote(id: url.path, url: url, title: TitleExtractor.extract(from: text),
+                            content: text, tags: TagExtractor.frontmatterTags(from: text),
+                            createdAt: Date(), updatedAt: Date(), pinned: false,
+                            relativePath: relativePath(of: url))
+        notes.insert(copy, at: 0)
+        return copy
     }
 
     private func saveDraft(_ content: String, id: String) -> Bool {
@@ -172,7 +228,7 @@ final class FileNoteStore {
               !FileManager.default.fileExists(atPath: id) else { return false }
         draftId = nil
         let url = URL(fileURLWithPath: id)
-        recentlySavedPaths[url.path] = Date()
+        recordOwnWrite(content, at: url)
         guard (try? content.write(to: url, atomically: true, encoding: .utf8)) != nil else { return false }
         notes.insert(FileNote(id: url.path, url: url, title: TitleExtractor.extract(from: content),
                               content: content, tags: TagExtractor.frontmatterTags(from: content),
@@ -208,8 +264,8 @@ final class FileNoteStore {
             return
         }
         guard let url = try? MemoFile.append(text, at: date, in: workspaceURL) else { return }
-        recentlySavedPaths[url.path] = Date()
         let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        recordOwnWrite(content, at: url)
         notes.insert(FileNote(id: url.path, url: url, title: TitleExtractor.extract(from: content),
                               content: content, tags: TagExtractor.frontmatterTags(from: content),
                               createdAt: date, updatedAt: date, pinned: false,
@@ -360,7 +416,7 @@ final class FileNoteStore {
                   let content = try? String(contentsOf: note.url, encoding: .utf8) else { continue }
             let relinked = LinkRewrite.rewrite(content, noteAt: oldPath, movedFrom: old, to: new,
                                                library: library.path, exists: { fm.fileExists(atPath: $0) })
-            if relinked != content { saveContent(relinked, to: note.id) }
+            if relinked != content { saveContent(relinked, to: note.id, basedOn: content) }
         }
     }
 
@@ -441,10 +497,15 @@ final class FileNoteStore {
     /// only the echo of our own saves, then debounces a reload.
     private func handleFileSystemEvents(_ paths: [String]) {
         let now = Date()
-        recentlySavedPaths = recentlySavedPaths.filter { now.timeIntervalSince($0.value) < 1.0 }
-        guard ExternalSync.hasExternalChange(eventPaths: paths,
-                                             selfSaved: Set(recentlySavedPaths.keys)) else { return }
+        ownWrites = ownWrites.filter { now.timeIntervalSince($0.value.at) < 5 }
+        guard ExternalSync.hasExternalChange(eventPaths: paths, ownWrites: ownWrites.mapValues { $0.content },
+                                             read: { try? String(contentsOfFile: $0, encoding: .utf8) })
+        else { return }
         scheduleReload()
+    }
+
+    private func recordOwnWrite(_ content: String, at url: URL) {
+        ownWrites[url.path] = (content, Date())
     }
 
     private func scheduleReload() {
