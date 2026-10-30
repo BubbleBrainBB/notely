@@ -21,7 +21,6 @@ struct NoteTitleHeader: ToolbarContent {
     }
 
     var body: some ToolbarContent {
-        NavigationArrowsItem()
         if #available(macOS 26, *) {
             FlatToolbarItem(placement: .navigation, glassInGlassTheme: false) {
                 if appModel.showsTabStrip {
@@ -65,43 +64,6 @@ struct NoteTitleHeader: ToolbarContent {
     }
 }
 
-/// Back and Forward at the head of the page, before the title or tab
-/// strip: beside the sidebar button once the sidebar is collapsed.
-struct NavigationArrowsItem: ToolbarContent {
-    var body: some ToolbarContent {
-        FlatToolbarItem(placement: .navigation, glassInGlassTheme: false) {
-            HStack(spacing: 2) {
-                NavigationArrowButton(direction: .back)
-                NavigationArrowButton(direction: .forward)
-            }
-        }
-    }
-}
-
-/// Back / Forward through the active tab's pages (AppModel.goBack); gray
-/// when there's nowhere to go.
-struct NavigationArrowButton: View {
-    enum Direction { case back, forward }
-    let direction: Direction
-    @Environment(AppModel.self) var appModel
-
-    var body: some View {
-        let isBack = direction == .back
-        Button {
-            isBack ? appModel.goBack() : appModel.goForward()
-        } label: {
-            Label {
-                Text(isBack ? "Back" : "Forward")
-            } icon: {
-                Image(nsImage: (isBack ? ShiyeGlyph.back : ShiyeGlyph.forward).templateImage())
-            }
-        }
-        .labelStyle(.iconOnly)
-        .disabled(isBack ? !appModel.canGoBack : !appModel.canGoForward)
-        .help(isBack ? "Back (⌘[)" : "Forward (⌘])")
-    }
-}
-
 /// The row of paper tabs. The active tab is the page's own color and its
 /// lower corners flare out into the page, so it reads as an index tab of
 /// the sheet below; the others are gray titles on the ground, split by
@@ -114,7 +76,12 @@ struct TabStrip: View {
     @State private var draggedTab: UUID?
 
     static let height: CGFloat = 52
-    static let tabHeight: CGFloat = 36
+    /// A tab rises from the page 40 points, to 12 under the toolbar's top;
+    /// its title sits in the upper 28, so it centers on the toolbar's
+    /// middle line (26) with the sidebar button and the trailing icons. The
+    /// rest is the neck where the active tab runs into the page.
+    static let tabHeight: CGFloat = 40
+    static let labelHeight: CGFloat = 28
     /// A pinned tab holds its icon and a small pin mark, and nothing else.
     static let pinnedWidth: CGFloat = 46
     static let maxTabWidth: CGFloat = 208
@@ -162,7 +129,7 @@ struct TabStrip: View {
             // New pages come from the toolbar's New Note, as with one page.
             if layout.overflows {
                 allTabsMenu
-                    .padding(.bottom, 4)
+                    .padding(.bottom, Self.height / 2 - Self.buttonWidth / 2)
             }
         }
         .frame(width: stripWidth, height: Self.height, alignment: .bottomLeading)
@@ -188,8 +155,8 @@ struct TabStrip: View {
                     Rectangle()
                         .fill(Color.primaryText.opacity(0.16))
                         .frame(width: 1, height: 14)
-                        .padding(.bottom, 11)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .padding(.top, (Self.labelHeight - 14) / 2)
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .offset(x: 0.5)
                 }
             }
@@ -315,13 +282,18 @@ private struct PaperTab: View {
             appModel.selectTab(tab.id)
         } label: {
             label
-                .frame(width: width, height: TabStrip.tabHeight)
+                .frame(width: width, height: TabStrip.labelHeight)
+                .frame(width: width, height: TabStrip.tabHeight, alignment: .top)
                 .background(alignment: .bottom) { background }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .trailing) {
-            if showsClose { closeButton.padding(.trailing, 7) }
+        .overlay(alignment: .topTrailing) {
+            if showsClose {
+                closeButton
+                    .padding(.trailing, 7)
+                    .padding(.top, (TabStrip.labelHeight - 16) / 2)
+            }
         }
         .help(help)
         .accessibilityLabel(title)

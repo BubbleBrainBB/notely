@@ -881,8 +881,7 @@ private struct SidebarSettingsRow: View {
 /// The sidebar button as a toolbar item: a flat icon, without the Liquid
 /// Glass circle macOS 26 puts behind toolbar buttons. Alone: the sidebar's
 /// part of the toolbar keeps only one button's room when the sidebar
-/// collapses, and anything more goes into ». Back and Forward sit at the
-/// head of the page instead (NavigationArrowsItem).
+/// collapses, and anything more goes into ».
 struct SidebarToggleItem: ToolbarContent {
     let placement: ToolbarItemPlacement
 

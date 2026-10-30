@@ -23,14 +23,13 @@ final class AppModel {
 
     /// The page's width less the toolbar's trailing icons (New Note, Info,
     /// More, and WeChat Preview when that extension is on — the same as with
-    /// one page, so none overflows into »), Back and
-    /// Forward before the strip, and the traffic lights and sidebar toggle
-    /// where the page reaches under them.
+    /// one page, so none overflows into »), and the traffic lights and
+    /// sidebar toggle where the page reaches under them.
     /// Read from where the page actually is, not from the sidebar's state:
     /// that flips at once while the page is still sliding, and a strip that
     /// is too wide for one frame sends every toolbar item into » for good.
     var tabStripWidth: CGFloat {
-        pageFrame.width - 164 - 72 - (AppSettings.anyPublishExtension ? 44 : 0) - max(0, 132 - pageFrame.minX)
+        pageFrame.width - 164 - (AppSettings.anyPublishExtension ? 44 : 0) - max(0, 132 - pageFrame.minX)
     }
 
     var activeIndex: Int { tabs.firstIndex { $0.id == activeTabId } ?? 0 }
