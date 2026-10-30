@@ -1,14 +1,14 @@
 import Foundation
 
 // Standalone test runner for WeChatRenderer: the bundled renderer, run in
-// JavaScriptCore, must write exactly what the wechat-black-red skill's own
-// `node render.mjs` writes, in every theme — and, its one addition, accept
-// bold beside Chinese punctuation.
+// JavaScriptCore, must write exactly what its source's own
+// `node Tools/wechat-renderer/src/scripts/render.mjs` writes, in every
+// theme — and, its one addition, accept bold beside Chinese punctuation.
 //
 //     swiftc Notely/Services/WeChatRenderer.swift Tests/WeChatRendererTests.swift -o /tmp/wechat-tests
-//     /tmp/wechat-tests [path/to/skills/wechat-black-red]
+//     /tmp/wechat-tests
 //
-// Needs node and the skill; without them the comparison is skipped.
+// Needs node; without it the comparison is skipped.
 // Exits non-zero if any assertion fails.
 
 @main
@@ -93,19 +93,18 @@ enum WeChatRendererTests {
         expect(embedded.html.contains("[["), false, "no brackets left")
         expect(embedded.warnings.contains { $0.hasPrefix("Obsidian Wiki") }, false, "no wiki warning")
 
-        // ── Same output as the skill ──
-        let skill = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
-            ?? NSString(string: "~/wechat-markdown-note/skills/wechat-black-red").expandingTildeInPath)
+        // ── Same output as the source ──
+        let source = repo.appendingPathComponent("Tools/wechat-renderer/src")
         let examples = ["assets/example.md", "assets/blueprint-example.md", "assets/songti-example.md",
                         "assets/motion-journal-example.md"]
-        if FileManager.default.fileExists(atPath: skill.appendingPathComponent("scripts/render.mjs").path) {
+        if FileManager.default.fileExists(atPath: source.appendingPathComponent("scripts/render.mjs").path) {
             let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("wechat-tests-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: scratch) }
             for theme in WeChatRenderer.Theme.allCases {
                 for example in examples {
-                    let input = skill.appendingPathComponent(example)
+                    let input = source.appendingPathComponent(example)
                     let out = scratch.appendingPathComponent("\(theme.rawValue)-\(input.lastPathComponent)")
-                    let status = run(["node", skill.appendingPathComponent("scripts/render.mjs").path,
+                    let status = run(["node", source.appendingPathComponent("scripts/render.mjs").path,
                                       "--input", input.path, "--out-dir", out.path, "--theme", theme.rawValue])
                     guard status == 0 else { expect(status, 0, "node render \(example) \(theme)"); continue }
                     let expected = try String(contentsOf: out.appendingPathComponent("article.html"), encoding: .utf8)
@@ -117,7 +116,7 @@ enum WeChatRendererTests {
                 }
             }
         } else {
-            print("Skipped the render.mjs comparison: no skill at \(skill.path)")
+            print("Skipped the render.mjs comparison: no source at \(source.path)")
         }
 
         if failures == 0 {

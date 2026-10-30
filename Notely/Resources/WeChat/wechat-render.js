@@ -134,7 +134,7 @@ if (typeof globalThis.URL === 'undefined') {
     };
   }
 
-  // ../../wechat-markdown-note/skills/wechat-black-red/vendor/parsers.mjs
+  // Tools/wechat-renderer/src/vendor/parsers.mjs
   var import_meta = {};
   var require2 = createRequire(import_meta.url);
   var __create = Object.create;
@@ -12814,7 +12814,7 @@ ${end.comment}` : end.comment;
     return new lib_default(options).use(markdownItCjkFriendlyPlugin);
   }
 
-  // ../../wechat-markdown-note/skills/wechat-black-red/scripts/videos.mjs
+  // Tools/wechat-renderer/src/scripts/videos.mjs
   var escape = (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   var markdownEscape = (value) => String(value).replace(/([\\`*_{}\[\]<>#!|])/g, "\\$1").replace(/[\r\n]+/g, " ");
   function isVideoSource(source) {
@@ -12929,7 +12929,7 @@ ${end.comment}` : end.comment;
     return lines.join("\n");
   }
 
-  // ../../wechat-markdown-note/skills/wechat-black-red/scripts/flows.mjs
+  // Tools/wechat-renderer/src/scripts/flows.mjs
   var escape3 = (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   var text2 = (value, name, max) => {
     if (typeof value !== "string" || !value.trim() || [...value.trim()].length > max || /[\r\n\x00-\x1f]/.test(value)) {
@@ -13002,7 +13002,7 @@ ${end.comment}` : end.comment;
 `;
   }
 
-  // ../../wechat-markdown-note/skills/wechat-black-red/scripts/render.mjs
+  // Tools/wechat-renderer/src/scripts/render.mjs
   var import_meta2 = {};
   var skillDir = path_default.resolve(path_default.dirname(fileURLToPath(import_meta2.url)), "..");
   var themeFiles = { "black-red": "theme.json", "blueprint": "themes/blueprint.json", "songti-supplement": "themes/songti-supplement.json", "motion-journal": "themes/motion-journal.json" };

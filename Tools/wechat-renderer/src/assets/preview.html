@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="icon" href="data:," />
+<title><!--TITLE--> · <!--THEME_NAME--></title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fbfaf8;color:#181818;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif}
+.toolbar{max-width:960px;margin:0 auto;padding:28px 24px 20px}.eyebrow{color:/*ACCENT*/#8f1d22;font-size:12px;font-weight:700;letter-spacing:2px}.toolbar h1{font-size:22px;line-height:1.5;margin:12px 0}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 12px}button{font:inherit;font-size:13px;padding:9px 14px;border:1px solid #d9d0d1;border-radius:5px;background:#fff;color:#222;cursor:pointer}button:hover{background:/*HOVER*/#f5eeee}button:focus-visible{outline:2px solid /*ACCENT*/#8f1d22;outline-offset:3px}button.primary{background:/*ACCENT*/#8f1d22;border-color:/*ACCENT*/#8f1d22;color:white}button[aria-pressed="true"]{border-color:/*ACCENT*/#8f1d22;color:/*ACCENT*/#8f1d22}button:disabled{opacity:.55;cursor:not-allowed}button[aria-busy="true"]{cursor:wait}.hint,#status{font-size:12px;line-height:1.7;color:#706365}#status{min-height:21px}details{font-size:12px;line-height:1.8;color:#7a4b4f;margin-top:12px}details ul{padding-left:20px}.paper{width:700px;max-width:100%;margin:0 auto 64px;background:/*PAPER*/white;border:1px solid #e5dfdc;box-shadow:0 8px 40px #18181805}.paper.mobile{width:390px}#pasteTest{display:none}@media(max-width:480px){.toolbar{padding:20px 16px 16px}.toolbar h1{font-size:19px}.paper{border-left:0;border-right:0}.actions{gap:6px}button{padding:8px 10px}}
+/*DARK_PREVIEW_STYLES*/
+.paper.dark{background:#191c22;border-color:#3b465a;color-scheme:dark}
+#dark-preview-note{max-width:390px;margin:0 auto 14px;padding:0 16px;color:#706365;font-size:12px;line-height:1.7}
+</style>
+</head>
+<body>
+<header class="toolbar">
+  <div class="eyebrow"><!--THEME_NAME--> / 固定模板</div>
+  <h1 id="article-title" style="<!--PREVIEW_TITLE_STYLE-->"></h1>
+  <p class="hint">标题单独复制到标题栏，下方正文复制到公众号编辑器。</p>
+  <nav class="actions" aria-label="预览操作">
+    <button class="primary" id="copy-rich">复制到公众号</button>
+    <button id="copy-title">复制标题</button>
+    <button id="copy-html">复制 HTML</button>
+    <button id="copy-video-list" hidden>复制视频清单</button>
+    <button id="mobile" aria-pressed="false">手机预览</button>
+    <button id="dark-mobile" aria-pressed="false" <!--DARK_PREVIEW_HIDDEN-->>暗色手机预览</button>
+    <button id="desktop" aria-pressed="true">桌面预览</button>
+    <button id="retry-images" hidden>重新检查图片</button>
+    <button id="toggle-motion" aria-pressed="false" hidden>暂停动画</button>
+    <button id="replay-motion" hidden>重播动画</button>
+  </nav>
+  <div id="status" role="status" aria-live="polite">正文样式固定；公众号粘贴后的图片和样式需检查。</div>
+  <div id="image-status" class="hint" role="status" aria-live="polite" hidden></div>
+  <details id="warnings" hidden><summary>有内容需要检查</summary><ul></ul></details>
+  <details id="videos" hidden><summary></summary><p class="hint">在公众号后台插入视频后，删除对应的整张占位卡。</p><ol></ol></details>
+</header>
+<p id="dark-preview-note" hidden>暗色配色模拟 · 不等同于微信自动转换；复制始终使用标准正文样式，图片保持原色。</p>
+<main id="article" class="paper"><!--ARTICLE--></main>
+<script id="payload" type="application/json"><!--DATA--></script>
+<script>
+const payload=JSON.parse(document.getElementById('payload').textContent);
+const article=document.getElementById('article');
+const flowSvgs=[...article.querySelectorAll('[data-animation-id] svg')];
+const motionPreference=window.matchMedia('(prefers-reduced-motion: reduce)');
+let motionPaused=false;
+function setMotionPaused(paused){
+  motionPaused=paused;
+  for(const svg of flowSvgs)paused?svg.pauseAnimations():svg.unpauseAnimations();
+  const button=document.getElementById('toggle-motion');
+  button.textContent=paused?'播放动画':'暂停动画';
+  button.setAttribute('aria-pressed',String(paused));
+}
+if(flowSvgs.length){
+  for(const id of ['toggle-motion','replay-motion'])document.getElementById(id).hidden=false;
+  if(motionPreference.matches){for(const svg of flowSvgs)svg.setCurrentTime(2);setMotionPaused(true);}
+  document.getElementById('toggle-motion').onclick=()=>setMotionPaused(!motionPaused);
+  document.getElementById('replay-motion').onclick=()=>{for(const svg of flowSvgs)svg.setCurrentTime(0);setMotionPaused(false);};
+  motionPreference.addEventListener('change',event=>setMotionPaused(event.matches));
+}
+const status=document.getElementById('status');
+const videos=payload.videos||[];
+const videoCopyReminder=videos.length?`含 ${videos.length} 张视频占位卡，请在公众号后台插入视频后删除。`:'';
+if(videos.length){
+  const panel=document.getElementById('videos');panel.hidden=false;
+  panel.querySelector('summary').textContent=`${videos.length} 处视频待插入`;
+  for(const video of videos){
+    const li=document.createElement('li');
+    const button=document.createElement('button');button.textContent=video.title;button.type='button';
+    button.onclick=()=>document.querySelector(`[data-video-id="${video.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'});
+    li.append(button);panel.querySelector('ol').append(li);
+  }
+  document.getElementById('copy-video-list').hidden=false;
+}
+const imageStatus=document.getElementById('image-status');
+const imageElements=[...article.querySelectorAll('img')];
+const imageStates=imageElements.map(()=> 'loading');
+const copyBusy=new Set();
+function imageCopyProblem(){
+  if(imageStates.includes('failed'))return '有图片加载失败，请检查图床链接后重新加载。';
+  if(imageStates.includes('loading'))return '图片正在加载，请稍候再复制。';
+  return '';
+}
+function syncImageState(){
+  const problem=imageCopyProblem();
+  for(const id of ['copy-rich','copy-html']){
+    const button=document.getElementById(id);
+    const loading=!imageStates.includes('failed')&&imageStates.includes('loading');
+    button.disabled=Boolean(problem)||copyBusy.has(id);
+    button.setAttribute('aria-busy',String(copyBusy.has(id)||loading));
+    button.title=problem;
+    if(id==='copy-rich')button.textContent=imageStates.includes('failed')?'图片加载失败':loading?'图片加载中…':copyBusy.has(id)?'正在复制…':'复制到公众号';
+  }
+  imageStatus.hidden=!imageElements.length;
+  const loaded=imageStates.filter(state=>state==='loaded').length;
+  const failed=imageStates.flatMap((state,index)=>state==='failed'?[index+1]:[]);
+  imageStatus.textContent=failed.length ? `第 ${failed.join('、')} 张图片加载失败。请检查图片直链、访问权限或防盗链设置。` : loaded===imageElements.length ? `图片 ${loaded}/${imageElements.length} 已加载；${imageElements.some(img=>img.src.startsWith('data:'))?'本地图片会随正文嵌入复制，粘贴后请检查。':'复制时保留原地址。'}` : `正在加载图片 ${loaded}/${imageElements.length}…`;
+  document.getElementById('retry-images').hidden=!failed.length;
+}
+imageElements.forEach((img,index)=>{
+  const update=()=>{imageStates[index]=img.naturalWidth>0?'loaded':'failed';syncImageState();};
+  img.addEventListener('load',update);img.addEventListener('error',update);
+  if(img.complete)update();
+});
+syncImageState();
+if(imageStates.includes('loading'))setTimeout(()=>{imageStates.forEach((state,index)=>{if(state==='loading')imageStates[index]='failed';});syncImageState();},15000);
+document.getElementById('retry-images').onclick=()=>window.location.reload();
+document.getElementById('article-title').textContent=payload.title;
+if(payload.warnings.length){const el=document.getElementById('warnings');el.hidden=false;for(const warning of payload.warnings){const li=document.createElement('li');li.textContent=warning;el.querySelector('ul').append(li)}}
+function selectCopy(){const copySource=document.createElement('div');copySource.innerHTML=payload.html;copySource.style.cssText='position:fixed;left:-100000px;top:0;width:700px;';document.body.append(copySource);const selection=window.getSelection();const old=[];for(let i=0;i<selection.rangeCount;i++)old.push(selection.getRangeAt(i).cloneRange());const range=document.createRange();range.selectNodeContents(copySource);selection.removeAllRanges();selection.addRange(range);let ok=false;try{ok=document.execCommand('copy')}finally{selection.removeAllRanges();for(const r of old)selection.addRange(r);copySource.remove()}if(!ok)throw new Error('浏览器未允许富文本复制，请用 localhost 预览后重试，或手动选择正文复制。')}
+async function richCopy(){if(navigator.clipboard?.write&&window.ClipboardItem){try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([payload.html],{type:'text/html'}),'text/plain':new Blob([article.innerText],{type:'text/plain'})})]);return}catch{selectCopy();return}}selectCopy()}
+async function textCopy(text){if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return}throw new Error('浏览器未允许剪贴板访问，请通过 localhost 打开预览。')}
+for(const [id,action,message]of [['copy-rich',richCopy,'已复制富文本。'+(videoCopyReminder||'粘贴到公众号正文后检查图片与样式。')],['copy-title',()=>textCopy(payload.title),'已复制文章标题。'],['copy-html',()=>textCopy(payload.html),'已复制 HTML 源代码。'+videoCopyReminder],['copy-video-list',()=>textCopy(payload.videoChecklist),'已复制视频待插入清单。']]){document.getElementById(id).onclick=async()=>{const button=document.getElementById(id);if(['copy-rich','copy-html'].includes(id)&&imageCopyProblem()){status.textContent=imageCopyProblem();return}copyBusy.add(id);button.disabled=true;button.setAttribute('aria-busy','true');syncImageState();try{await action();status.textContent=message}catch(error){status.textContent='复制失败：'+error.message}finally{copyBusy.delete(id);button.disabled=false;button.setAttribute('aria-busy','false');syncImageState()}}}
+for(const id of ['mobile','dark-mobile','desktop'])document.getElementById(id).onclick=()=>{article.classList.toggle('mobile',id!=='desktop');article.classList.toggle('dark',id==='dark-mobile');document.getElementById('dark-preview-note').hidden=id!=='dark-mobile';for(const key of ['mobile','dark-mobile','desktop'])document.getElementById(key).setAttribute('aria-pressed',String(key===id))};
+</script>
+</body>
+</html>
