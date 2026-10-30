@@ -35,14 +35,12 @@ struct WindowRoot: View {
     @Environment(ThemeManager.self) private var themeManager
     @State private var store = FileNoteStore()
     @State private var appModel = AppModel()
-    @State private var settingsTabState = SettingsTabState()
 
     var body: some View {
         AppShellView()
-            .background(WindowCloseBehavior(store: store).frame(width: 0, height: 0))
+            .background(WindowCloseBehavior(store: store, appModel: appModel).frame(width: 0, height: 0))
             .environment(store)
             .environment(appModel)
-            .environment(settingsTabState)
             // One accent everywhere: Notely's own (Settings › Appearance),
             // not the system accent the native controls would otherwise pick.
             .tint(Color.accent)
@@ -54,6 +52,7 @@ struct WindowRoot: View {
             // accent-driven Color tokens are re-read everywhere. The @State above
             // lives on WindowRoot, which keeps its identity, so the open folder
             // and notes survive an accent switch.
+            .modifier(ClearWindowContainer(isGlass: themeManager.isGlass))
             .id(themeManager.renderKey)
     }
 }
@@ -80,14 +79,26 @@ struct AppCommands: Commands {
     @FocusedValue(\.noteStore) private var store
     @FocusedValue(\.appModel) private var appModel
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(AppSettings.wechatExtensionKey) private var wechatEnabled = false
+    @AppStorage(AppSettings.xhsExtensionKey) private var xhsEnabled = false
+
+    /// ⌥⌘C follows the preview: WeChat copies, Xiaohongshu adds the cards to Photos.
+    private var exportsCards: Bool {
+        guard xhsEnabled, let appModel else { return false }
+        return appModel.publishTarget(for: appModel.selectedNoteId) == .xiaohongshu
+    }
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
-            Button("New Note") {
-                guard let store, let appModel else { return }
-                appModel.openNote(store.createNote()?.id)
-            }
-            .keyboardShortcut("n", modifiers: .command)
+            // New Note and New Tab are one thing: a blank draft in a new
+            // tab, written to the library once something is typed (㉝ E, ㊴).
+            Button("New Note") { appModel?.newTab() }
+                .keyboardShortcut("n", modifiers: .command)
+            Button("New Tab") { appModel?.newTab() }
+                .keyboardShortcut("t", modifiers: .command)
+
+            // The quick memo panel; ⌃⌥N opens it from anywhere (QuickCapture).
+            Button("New Memo") { QuickCapture.shared.show() }
 
             Button("New Window") {
                 openWindow(id: "main")
@@ -98,6 +109,41 @@ struct AppCommands: Commands {
                 openFolderInFocusedWindow()
             }
             .keyboardShortcut("o", modifiers: .command)
+
+            Divider()
+
+            // ⌘W closes the tab, or the window on its last one:
+            // WindowCloseController.
+            Button("Reopen Closed Tab") {
+                guard let store, let appModel else { return }
+                appModel.reopenClosedTab { content in
+                    switch content {
+                    case .note(let id): store.notes.contains { $0.id == id }
+                    case .file(let id): store.files.contains { $0.id == id }
+                    case .draft, .memos: true
+                    }
+                }
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(appModel?.canReopenClosedTab != true)
+        }
+
+        CommandGroup(after: .windowArrangement) {
+            Divider()
+            Button("Show Next Tab") { appModel?.selectTab(offset: 1) }
+                .keyboardShortcut(.tab, modifiers: .control)
+                .disabled(appModel?.showsTabStrip != true)
+            Button("Show Previous Tab") { appModel?.selectTab(offset: -1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                .disabled(appModel?.showsTabStrip != true)
+            Button(appModel?.activeTab.isPinned == true ? "Unpin Tab" : "Pin Tab") {
+                guard let appModel else { return }
+                appModel.togglePin(appModel.activeTabId)
+            }
+            // The tab's own right-click menu is swallowed by the system's
+            // toolbar menu on macOS 26, so the shortcut is the way in.
+            .keyboardShortcut("p", modifiers: [.command, .option])
+            .disabled(appModel?.showsTabStrip != true)
         }
 
         CommandGroup(after: .importExport) {
@@ -106,6 +152,25 @@ struct AppCommands: Commands {
                 NoteExporter.exportAll(store.notes)
             }
             .disabled(store == nil)
+            // The publishing extensions (Settings › Extensions).
+            if wechatEnabled || xhsEnabled {
+                Divider()
+                Button(appModel?.isPublishPreviewOpen == true ? "Hide Preview" : "Show Preview") {
+                    appModel?.togglePublishPreview()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .control])
+                .disabled(appModel?.selectedNoteId == nil)
+                Button(exportsCards ? "Add Xiaohongshu Cards to Photos" : "Copy for WeChat") {
+                    guard let appModel else { return }
+                    if exportsCards {
+                        Task { await XhsCards.addOrShowWhy(appModel) }
+                    } else {
+                        Task { await WeChatCopy.copyOrShowWhy(appModel) }
+                    }
+                }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(appModel?.selectedNoteId == nil || !(exportsCards || wechatEnabled))
+            }
         }
 
         CommandGroup(replacing: .appSettings) {
@@ -117,6 +182,12 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .sidebar) {
             Button("Toggle Sidebar") { appModel?.toggleSidebar() }
                 .keyboardShortcut("s", modifiers: [.command, .option])
+            Button("Back") { appModel?.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+                .disabled(appModel?.canGoBack != true)
+            Button("Forward") { appModel?.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+                .disabled(appModel?.canGoForward != true)
             Button("Search Notes") {
                 guard let appModel else { return }
                 appModel.presentSearch()
@@ -135,8 +206,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut("i", modifiers: .command)
             Button("Insert Link") { NSApp.sendAction(#selector(WysiwygTextView.insertLink), to: nil, from: nil) }
                 .keyboardShortcut("k", modifiers: .command)
+            // ⌘L, as in Obsidian: ⇧⌘T reopens a closed tab.
             Button("Toggle Todo") { NSApp.sendAction(#selector(WysiwygTextView.toggleTodoOnCurrentLine), to: nil, from: nil) }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .keyboardShortcut("l", modifiers: .command)
         }
     }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Left column (design boards ㉔–㉕, ㉚): search, then the library — its name
 /// as the tree's heading that folds it, with folder options (…) and New
@@ -8,7 +9,7 @@ import AppKit
 struct SidebarView: View {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
-    @State private var expandedFolders: Set<String> = []
+    @State private var tree = NoteTreeState()
     /// The whole library folded under its header (design board ㉚ C).
     @AppStorage("notely.libraryCollapsed") private var libraryCollapsed = false
 
@@ -17,8 +18,13 @@ struct SidebarView: View {
     /// window doesn't.)
     static let leadingInset: CGFloat = 8
 
+    /// The notes tree's notes: everything but the Memos folder, which has its
+    /// own page (the Memos row) rather than showing up twice.
     private var sortedNotes: [FileNote] {
-        NoteSorting.sorted(store.notes, by: appModel.sortMode)
+        let memoFolder = "/" + MemoFormat.folderName
+        return NoteSorting.sorted(store.notes.filter {
+            $0.relativePath != memoFolder && !$0.relativePath.hasPrefix(memoFolder + "/")
+        }, by: appModel.sortMode)
     }
 
     var body: some View {
@@ -26,7 +32,7 @@ struct SidebarView: View {
         .frame(minWidth: 0, maxWidth: .infinity)
         // On the window ground, no divider: the editor's floating page is
         // what separates the two columns (design board ㉗ D).
-        .background(Color.windowGround)
+        .background(appModel.groundColor)
         // The hide button sits in the sidebar's part of the toolbar, on the
         // line of the traffic lights and the note title. It stays there when
         // the sidebar collapses, so it is always ONE item: swapping it for a
@@ -55,12 +61,20 @@ struct SidebarView: View {
         .onChange(of: appModel.selectedNoteId) { _, id in
             if id != nil, libraryCollapsed { libraryCollapsed = false }
         }
+        .environment(tree)
+        .alert(tree.failedMove?.title ?? "", isPresented: Binding(
+            get: { tree.failedMove != nil }, set: { if !$0 { tree.failedMove = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(tree.failedMove?.message ?? "")
+        }
     }
 
     /// The natural width of the widest note row (indent + file name + chrome),
     /// for double-click-to-fit on the divider.
     private func longestRowWidth() -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let font = NSFont.systemFont(ofSize: TextSize.body.rawValue, weight: .semibold)
         let outer = Self.leadingInset + 8
         return store.notes.reduce(SidebarWidthPolicy.minimum) { widest, note in
             let depth = CGFloat(note.relativePath.split(separator: "/").count)
@@ -73,11 +87,16 @@ struct SidebarView: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SidebarSearchField()
-                .padding(.leading, Self.leadingInset)
-                .padding(.trailing, 8)
-                .padding(.top, 4)
-                .padding(.bottom, 10)
+            VStack(alignment: .leading, spacing: 1) {
+                SidebarSearchField()
+                SidebarRow(icon: .glyph(.memo), title: "Memos", isSelected: appModel.showMemos) {
+                    appModel.openMemos(inNewTab: NSEvent.modifierFlags.contains(.command))
+                }
+            }
+            .padding(.leading, Self.leadingInset)
+            .padding(.trailing, 8)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -86,9 +105,12 @@ struct SidebarView: View {
                 .padding(.leading, Self.leadingInset)
                 .padding(.trailing, 8)
                 .padding(.bottom, 16)
-                .background(SidebarScrollerConfigurator())
+                .background(QuietScrollerInstaller(shortensKnob: true))
             }
             .scrollContentBackground(.hidden)
+            // Dropped anywhere but on a row: out to the library's top level.
+            .onDrop(of: [.url], delegate: TreeDropDelegate(
+                folderId: "/", tree: tree, store: store, appModel: appModel, settles: true))
 
             SidebarSettingsRow()
                 .padding(.leading, Self.leadingInset)
@@ -100,28 +122,30 @@ struct SidebarView: View {
     // MARK: Notes tree
 
     @ViewBuilder private var notesSection: some View {
+        let root = NoteTreeBuilder.build(from: sortedNotes, files: store.files)
         LibraryHeader(isCollapsed: libraryCollapsed) {
             withAnimation(.easeInOut(duration: 0.15)) { libraryCollapsed.toggle() }
         }
+        .onChange(of: NoteTreeState.folderIds(in: root), initial: true) { _, ids in tree.folderIds = ids }
 
-        let tree = NoteTreeBuilder.build(from: sortedNotes)
-        if libraryCollapsed {
+        if libraryCollapsed || !store.hasLoadedNotes {
+            // Folded, or the first scan hasn't landed: not "No notes yet".
             EmptyView()
-        } else if tree.totalCount == 0 {
+        } else if root.totalCount == 0 {
             Text("No notes yet")
-                .font(.notely(12.5))
+                .font(.notely(.caption))
                 .foregroundColor(.tertiaryText)
                 .padding(.leading, NoteTreeIndent.base)
                 .frame(height: 28)
         } else {
-            NoteFolderContents(folder: tree, depth: 0, expandedFolders: $expandedFolders)
+            NoteFolderContents(folder: root, depth: 0)
         }
     }
 
     /// Expands every folder on the way to the selected note so it is visible.
     private func revealSelectedNote(_ id: String?) {
         guard let id, let note = store.notes.first(where: { $0.id == id }) else { return }
-        expandedFolders.formUnion(NoteTreeBuilder.ancestorIds(ofRelativePath: note.relativePath))
+        tree.expandedFolders.formUnion(NoteTreeBuilder.ancestorIds(ofRelativePath: note.relativePath))
     }
 }
 
@@ -151,6 +175,7 @@ private struct LibraryHeader: View {
     let toggle: () -> Void
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
+    @Environment(NoteTreeState.self) var tree
     @Environment(\.openWindow) private var openWindow
     @State private var isHovering = false
     @State private var isHoveringMore = false
@@ -162,24 +187,16 @@ private struct LibraryHeader: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            // The name folds and unfolds the library (design board ㉚ C). Its
-            // icon turns into the disclosure arrow on hover — and stays an
-            // arrow while folded — like the folder rows below.
+            // The name folds and unfolds the library (design board ㉚). The
+            // icon stays the library icon — no disclosure arrow, on hover or
+            // folded; the tree showing or not is the state.
             Button(action: toggle) {
                 HStack(spacing: NoteTreeIndent.iconGap) {
-                    Group {
-                        if isHovering || isCollapsed {
-                            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.secondaryText)
-                        } else {
-                            ShiyeIcon(.library, size: NoteTreeIndent.icon)
-                                .foregroundColor(.iconMuted)
-                        }
-                    }
-                    .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+                    ShiyeIcon(.library, size: NoteTreeIndent.icon)
+                        .foregroundColor(.iconMuted)
+                        .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
                     Text(name)
-                        .font(.notely(13, weight: .medium))
+                        .font(.notely(.body, weight: .medium))
                         .foregroundColor(.primaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -247,7 +264,9 @@ private struct LibraryHeader: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isHovering ? Color.cardHover : Color.clear)
         )
+        .dropHighlight(tree.dropTarget == "/")
         .onHover { isHovering = $0 }
+        .treeDropTarget("/")
     }
 }
 
@@ -266,7 +285,7 @@ private struct SidebarSearchField: View {
                     .foregroundColor(.iconMuted)
                     .frame(width: 16)
                 Text("Search")
-                    .font(.notely(13))
+                    .font(.notely(.body))
                     .foregroundColor(.tertiaryText)
                 Spacer(minLength: 0)
             }
@@ -294,13 +313,13 @@ struct ShortcutHint: View {
 
     var body: some View {
         Text(text)
-            .font(.notely(11, weight: .medium))
+            .font(.notely(.caption, weight: .medium))
             .foregroundColor(.tertiaryText)
             .padding(.horizontal, boxed ? 5 : 0)
             .frame(height: 18)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(boxed ? Color.fromHex("#FAFAF9") : Color.clear)
+                    .fill(boxed ? Color.surface : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -316,7 +335,7 @@ struct SidebarSectionLabel: View {
 
     var body: some View {
         Text(title)
-            .font(.notely(11.5, weight: .semibold))
+            .font(.notely(.caption, weight: .semibold))
             .foregroundColor(.tertiaryText)
             .padding(.horizontal, 10)
             .padding(.top, 4)
@@ -364,7 +383,7 @@ struct SidebarRow: View {
                     .foregroundColor(isSelected || isEmphasized ? .primaryText : .iconMuted)
                     .frame(width: 16)
                 Text(title)
-                    .font(.notely(13, weight: isSelected || isEmphasized ? .semibold : .regular))
+                    .font(.notely(.body, weight: isSelected || isEmphasized ? .semibold : .regular))
                     .foregroundColor(isSelected || isEmphasized ? .primaryText : .secondaryText)
                 Spacer(minLength: 0)
             }
@@ -373,6 +392,7 @@ struct SidebarRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
             )
             .contentShape(Rectangle())
         }
@@ -440,27 +460,30 @@ struct FolderGlyph: Shape {
 private struct NoteFolderContents: View {
     let folder: NoteFolder
     let depth: Int
-    @Binding var expandedFolders: Set<String>
     var baseIndent: CGFloat = NoteTreeIndent.base
+    @Environment(NoteTreeState.self) var tree
 
     var body: some View {
         ForEach(folder.folders) { child in
-            FolderRow(folder: child, depth: depth, isExpanded: expandedFolders.contains(child.id), baseIndent: baseIndent) {
+            FolderRow(folder: child, depth: depth, isExpanded: tree.expandedFolders.contains(child.id), baseIndent: baseIndent) {
                 withAnimation(.easeInOut(duration: 0.15)) {
-                    if expandedFolders.contains(child.id) {
-                        expandedFolders.remove(child.id)
+                    if tree.expandedFolders.contains(child.id) {
+                        tree.expandedFolders.remove(child.id)
                     } else {
-                        expandedFolders.insert(child.id)
+                        tree.expandedFolders.insert(child.id)
                     }
                 }
             }
-            if expandedFolders.contains(child.id) {
-                NoteFolderContents(folder: child, depth: depth + 1, expandedFolders: $expandedFolders, baseIndent: baseIndent)
+            if tree.expandedFolders.contains(child.id) {
+                NoteFolderContents(folder: child, depth: depth + 1, baseIndent: baseIndent)
             }
         }
         ForEach(folder.notes) { note in
             // Note titles line up with sibling folder names (past the chevron).
             NoteRow(note: note, leading: leading(for: depth))
+        }
+        ForEach(folder.files) { file in
+            FileRow(file: file, leading: leading(for: depth))
         }
     }
 
@@ -475,27 +498,25 @@ private struct FolderRow: View {
     let isExpanded: Bool
     var baseIndent: CGFloat = NoteTreeIndent.base
     let toggle: () -> Void
+    @Environment(FileNoteStore.self) var store
+    @Environment(NoteTreeState.self) var tree
     @State private var isHovering = false
+
+    private var url: URL? {
+        store.workspaceURL.map { LibraryMove.folderURL(forId: folder.id, in: $0) }
+    }
 
     var body: some View {
         Button(action: toggle) {
             HStack(spacing: NoteTreeIndent.iconGap) {
-                // Hovering swaps the folder for the disclosure arrow, so the
-                // arrow never takes up room of its own.
-                Group {
-                    if isHovering {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.secondaryText)
-                    } else {
-                        FolderGlyph(open: isExpanded)
-                            .stroke(isExpanded ? Color.secondaryText : Color.iconMuted,
-                                    style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
-                    }
-                }
-                .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+                // No disclosure arrow: the folder itself shows the state,
+                // open while expanded and closed while folded.
+                FolderGlyph(open: isExpanded)
+                    .stroke(isExpanded ? Color.secondaryText : Color.iconMuted,
+                            style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
+                    .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
                 Text(folder.name)
-                    .font(.notely(13, weight: isExpanded ? .medium : .regular))
+                    .font(.notely(.body, weight: isExpanded ? .medium : .regular))
                     .foregroundColor(isExpanded || isHovering ? .primaryText : .secondaryText)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -507,10 +528,24 @@ private struct FolderRow: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isHovering ? Color.cardHover : Color.clear)
             )
+            .dropHighlight(tree.dropTarget == folder.id)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .draggable(url ?? URL(fileURLWithPath: "/")) {
+            SidebarDragPreview(title: folder.name) {
+                FolderGlyph(open: false)
+                    .stroke(Color.secondaryText, style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
+            }
+        }
+        .treeDropTarget(folder.id, springLoads: !isExpanded)
+        .contextMenu {
+            if let url {
+                MoveToMenu(item: url, parent: (folder.id as NSString).deletingLastPathComponent, folderId: folder.id)
+                Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+        }
     }
 }
 
@@ -536,14 +571,16 @@ private struct NoteRow: View {
 
     var body: some View {
         Button {
-            appModel.openNote(note.id)
+            // A new tab, the open ones kept; only a blank draft is filled in
+            // place, and ⌘-click keeps that too (design board ㊴).
+            appModel.openNote(note.id, inNewTab: NSEvent.modifierFlags.contains(.command))
         } label: {
             HStack(spacing: NoteTreeIndent.iconGap) {
                 ShiyeIcon(.note, size: 15)
                     .foregroundColor(isSelected ? .secondaryText : .faintIcon)
                     .frame(width: NoteTreeIndent.icon)
                 Text(displayTitle)
-                    .font(.notely(13, weight: isSelected ? .semibold : .regular))
+                    .font(.notely(.body, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? .primaryText : .secondaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -560,21 +597,28 @@ private struct NoteRow: View {
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .draggable(note.url) {
+            SidebarDragPreview(title: displayTitle) { ShiyeIcon(.note, size: 15) }
+        }
+        // Dropped on a note: into the note's folder, as in Finder's list view.
+        .treeDropTarget(note.relativePath)
         .contextMenu {
             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
             Button("Rename…") {
                 renameText = note.filename
                 isRenaming = true
             }
+            MoveToMenu(item: note.url, parent: note.relativePath)
             Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([note.url]) }
             Divider()
             Button("Delete", role: .destructive) {
-                if appModel.selectedNoteId == note.id { appModel.selectedNoteId = nil }
+                appModel.removeTabs(showing: .note(note.id))
                 store.deleteNote(note.id)
             }
         }
@@ -588,10 +632,237 @@ private struct NoteRow: View {
     }
 
     private func performRename() {
-        let wasSelected = appModel.selectedNoteId == note.id
-        if let newId = store.renameNote(note.id, to: renameText), wasSelected {
-            appModel.selectedNoteId = newId
+        if let newId = store.renameNote(note.id, to: renameText) {
+            appModel.remapTabs(from: note.id, to: newId)
         }
+    }
+}
+
+/// An image, video or PDF in the tree, after the notes of its folder. Opens
+/// in the preview page.
+private struct FileRow: View {
+    let file: LibraryFile
+    let leading: CGFloat
+    @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
+    @State private var isHovering = false
+
+    private var isSelected: Bool {
+        appModel.selectedFileId == file.id && appModel.selectedNoteId == nil
+            && !appModel.showSettings && !appModel.showMemos
+    }
+
+    private var glyph: ShiyeGlyph {
+        switch file.kind {
+        case .image: .image
+        case .video: .video
+        case .pdf: .file
+        }
+    }
+
+    var body: some View {
+        Button {
+            appModel.openFile(file.id, inNewTab: NSEvent.modifierFlags.contains(.command))
+        } label: {
+            HStack(spacing: NoteTreeIndent.iconGap) {
+                ShiyeIcon(glyph, size: 15)
+                    .foregroundColor(isSelected ? .secondaryText : .faintIcon)
+                    .frame(width: NoteTreeIndent.icon)
+                Text(file.name)
+                    .font(.notely(.body, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .primaryText : .tertiaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, leading)
+            .padding(.trailing, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isSelected ? Color.groundSelectedBg : (isHovering ? Color.cardHover : Color.clear))
+                    .shadow(color: isSelected ? Color.selectedRowShadow : .clear, radius: 1.5, y: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .draggable(file.url) {
+            SidebarDragPreview(title: file.name) { ShiyeIcon(glyph, size: 15) }
+        }
+        .treeDropTarget(file.relativePath)
+        .contextMenu {
+            Button("Copy Markdown Link") {
+                guard let library = store.workspaceURL else { return }
+                let path = AttachmentImport.relativePath(from: library, to: file.url)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(AttachmentImport.markdown(forPath: path), forType: .string)
+            }
+            Button("Open in Default App") { NSWorkspace.shared.open(file.url) }
+            MoveToMenu(item: file.url, parent: file.relativePath)
+            Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+            Divider()
+            Button("Move to Trash", role: .destructive) {
+                if (try? FileManager.default.trashItem(at: file.url, resultingItemURL: nil)) != nil {
+                    appModel.removeTabs(showing: .file(file.id))
+                    store.reloadNotes()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Moving
+
+/// Move To: the library's top level and every folder of the tree, but not
+/// the item's own folder — nor, for a folder, itself or a folder inside it.
+private struct MoveToMenu: View {
+    let item: URL
+    /// The folder the item is in now.
+    let parent: String
+    /// For a folder, its own id.
+    var folderId: String? = nil
+    @Environment(NoteTreeState.self) var tree
+    @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
+
+    private var destinations: [String] {
+        (["/"] + tree.folderIds).filter { id in
+            id != parent && !(folderId.map { LibraryMove.isSameOrInside(id, $0) } ?? false)
+        }
+    }
+
+    var body: some View {
+        Menu("Move To") {
+            ForEach(destinations, id: \.self) { id in
+                Button(label(for: id)) {
+                    tree.move([item], toFolder: id, store: store, appModel: appModel)
+                }
+            }
+        }
+        .disabled(destinations.isEmpty)
+    }
+
+    /// The library's name, or the folder's path below it ("Travel › Japan").
+    private func label(for id: String) -> String {
+        id == "/" ? tree.folderName("/", store: store) : id.split(separator: "/").joined(separator: " › ")
+    }
+}
+
+/// Lands dragged sidebar rows in the folder `folderId`. Proposes a move, so
+/// the pointer shows no copy badge.
+private struct TreeDropDelegate: DropDelegate {
+    let folderId: String
+    let tree: NoteTreeState
+    let store: FileNoteStore
+    let appModel: AppModel
+    /// The list behind the rows: claims the highlight only after a beat.
+    var settles = false
+    /// A closed folder: opens if the drag rests on it.
+    var springLoads = false
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.url])
+    }
+
+    func dropEntered(info: DropInfo) {
+        tree.setTargeted(true, folder: folderId, settles: settles)
+        if springLoads { tree.springLoad(folderId) }
+    }
+
+    func dropExited(info: DropInfo) {
+        tree.setTargeted(false, folder: folderId)
+        tree.cancelSpringLoad(folderId)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: [.url])
+        guard !providers.isEmpty else { return false }
+        Task { @MainActor in
+            var urls: [URL] = []
+            for provider in providers {
+                if let url = await Self.loadURL(provider) { urls.append(url) }
+            }
+            tree.move(urls, toFolder: folderId, store: store, appModel: appModel)
+        }
+        return true
+    }
+
+    private static func loadURL(_ provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url?.isFileURL == true ? url : nil)
+            }
+        }
+    }
+}
+
+/// What follows the pointer while a sidebar row is dragged: the row's icon
+/// and name on a small raised label, legible over whatever it passes.
+private struct SidebarDragPreview<Icon: View>: View {
+    let title: String
+    @ViewBuilder let icon: Icon
+
+    var body: some View {
+        HStack(spacing: NoteTreeIndent.iconGap) {
+            icon
+                .foregroundColor(.secondaryText)
+                .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
+            Text(title)
+                .font(.notely(.body, weight: .medium))
+                .foregroundColor(.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+        .frame(maxWidth: 220, alignment: .leading)
+        .fixedSize()
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .strokeBorder(Color.borderColor, lineWidth: 1)
+        )
+    }
+}
+
+private struct TreeDropTarget: ViewModifier {
+    let folderId: String
+    let springLoads: Bool
+    @Environment(NoteTreeState.self) var tree
+    @Environment(FileNoteStore.self) var store
+    @Environment(AppModel.self) var appModel
+
+    func body(content: Content) -> some View {
+        content.onDrop(of: [.url], delegate: TreeDropDelegate(
+            folderId: folderId, tree: tree, store: store, appModel: appModel, springLoads: springLoads))
+    }
+}
+
+private extension View {
+    func treeDropTarget(_ folderId: String, springLoads: Bool = false) -> some View {
+        modifier(TreeDropTarget(folderId: folderId, springLoads: springLoads))
+    }
+
+    /// The tint on a folder row (or the library heading) a drop would land in.
+    func dropHighlight(_ isTargeted: Bool) -> some View {
+        overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(isTargeted ? Color.accentHover : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(isTargeted ? Color.accent.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
+                .allowsHitTesting(false)
+                .animation(.easeOut(duration: 0.12), value: isTargeted)
+        )
     }
 }
 
@@ -608,16 +879,18 @@ private struct SidebarSettingsRow: View {
 }
 
 /// The sidebar button as a toolbar item: a flat icon, without the Liquid
-/// Glass circle macOS 26 puts behind toolbar buttons.
+/// Glass circle macOS 26 puts behind toolbar buttons. Alone: the sidebar's
+/// part of the toolbar keeps only one button's room when the sidebar
+/// collapses, and anything more goes into ».
 struct SidebarToggleItem: ToolbarContent {
     let placement: ToolbarItemPlacement
 
     var body: some ToolbarContent {
         if #available(macOS 26, *) {
-            ToolbarItem(placement: placement) { SidebarToggleButton() }
+            ToolbarItem(placement: placement) { SidebarToggleButton().modifier(DimsWithWindow()) }
                 .sharedBackgroundVisibility(.hidden)
         } else {
-            ToolbarItem(placement: placement) { SidebarToggleButton() }
+            ToolbarItem(placement: placement) { SidebarToggleButton().modifier(DimsWithWindow()) }
         }
     }
 }
@@ -676,6 +949,10 @@ private struct SidebarSplitHook: NSViewRepresentable {
         private var observers: [NSObjectProtocol] = []
         private var isDraggingDivider = false
         private var lastWidth: CGFloat = 0
+        /// A saved width that arrived while the sidebar was collapsed (a
+        /// library opened from the welcome page starts that way); applied
+        /// once it has expanded.
+        private var pendingWidth: CGFloat?
         private var wasCollapsed = false
 
         deinit { detach() }
@@ -751,6 +1028,13 @@ private struct SidebarSplitHook: NSViewRepresentable {
                 let collapsed = wasCollapsed
                 DispatchQueue.main.async { [weak self] in self?.onCollapsedChange(collapsed) }
             }
+            if !isCollapsed, let pending = pendingWidth {
+                pendingWidth = nil
+                // After the expand animation, so the two don't fight.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+                    self?.setWidth(pending, save: false)
+                }
+            }
             let width = sidebarWidth
             if isDraggingDivider, SidebarWidthPolicy.crossedSnapPoint(from: lastWidth, to: width) != nil {
                 NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
@@ -807,53 +1091,10 @@ private struct SidebarSplitHook: NSViewRepresentable {
             // Widths saved while the icon rail existed (64) count as unset.
             let width = saved.map { CGFloat($0) }.flatMap { $0 >= SidebarWidthPolicy.minimum ? $0 : nil }
                 ?? SidebarWidthPolicy.standardDefault
-            DispatchQueue.main.async { [weak self] in self?.setWidth(width, save: false) }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.isCollapsed { self.pendingWidth = width } else { self.setWidth(width, save: false) }
+            }
         }
-    }
-}
-
-// MARK: - Scroller
-
-private struct SidebarScrollerConfigurator: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        DispatchQueue.main.async { configureScroller(from: view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async { configureScroller(from: nsView) }
-    }
-
-    private func configureScroller(from view: NSView) {
-        guard let scrollView = view.enclosingScrollView,
-              !(scrollView.verticalScroller is SidebarScroller) else { return }
-
-        let scroller = SidebarScroller(frame: .zero)
-        scroller.scrollerStyle = .overlay
-        scrollView.verticalScroller = scroller
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.scrollerStyle = .overlay
-    }
-}
-
-private final class SidebarScroller: NSScroller {
-    override class var isCompatibleWithOverlayScrollers: Bool { true }
-    override class func scrollerWidth(for controlSize: NSControl.ControlSize, scrollerStyle: NSScroller.Style) -> CGFloat { 7 }
-
-    override func drawKnob() {
-        let slotRect = rect(for: .knobSlot)
-        let rawKnobRect = rect(for: .knob)
-        let height = max(34, rawKnobRect.height * 0.66)
-        let y = rawKnobRect.midY - height / 2
-        let knobRect = NSRect(x: slotRect.midX - 2, y: y, width: 4, height: height)
-
-        NSColor.labelColor.withAlphaComponent(0.16).setFill()
-        NSBezierPath(roundedRect: knobRect, xRadius: 2, yRadius: 2).fill()
-    }
-
-    override func drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {
-        // Keep the sidebar scrollbar quiet: no track, only the lightweight thumb.
     }
 }

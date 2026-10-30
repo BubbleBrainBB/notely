@@ -29,12 +29,10 @@ struct MarkdownStyle {
     /// system cascade already pairs the two scripts.
     let compositeFont: CompositeFont
 
+    /// Also the style of every empty line: a blank line is a full body line
+    /// wherever the caret is, so ↩ always moves down one line and nothing
+    /// shifts when the caret moves.
     let baseParagraph: [NSAttributedString.Key: Any]
-    /// The first empty line after a paragraph: a fixed gap, so one blank
-    /// line or three read the same (board ⑲ ⑤).
-    let blankLineParagraph: NSParagraphStyle
-    /// Further empty lines in the same run: (almost) no height.
-    let extraBlankLineParagraph: NSParagraphStyle
 
     /// The note's first `#` heading, shown as its title.
     let title: [NSAttributedString.Key: Any]
@@ -76,6 +74,13 @@ final class WysiwygEngine {
     /// tracking the same attachment object across restyles. Rebuilt once the
     /// poster arrives.
     private var videoCache: [String: (attachment: VideoAttachment, hasPoster: Bool)] = [:]
+    /// Images and the frontmatter panel, reused while unchanged so a restyle
+    /// keeps the same attachment objects: nothing to re-measure or redraw,
+    /// and `applyChanges` sees those runs as unchanged. Image keys count
+    /// repeats of the same image within a pass.
+    private var imageCache: [String: ImageTextAttachment] = [:]
+    private var imageOccurrences: [String: Int] = [:]
+    private var frontmatterCache: (key: String, attachment: FrontmatterAttachment)?
 
     /// Obsidian embed: `![[file.ext]]`, `![[file|300]]`.
     private static let embedPattern = try! NSRegularExpression(pattern: #"!\[\[([^\]\n]+)\]\]"#)
@@ -87,6 +92,17 @@ final class WysiwygEngine {
     static let calloutTextIndent: CGFloat = 40
     static let codeTextIndent: CGFloat = 16
     static let listIndentStep: CGFloat = ListMarker.slotWidth
+
+    /// Sizes in a note as multiples of the body size (Settings › Writing ›
+    /// Size), so the title and headings stay above the body at any size:
+    /// 30 / 26 / 21 / 18 at the default 16. Code, tags, callout titles and
+    /// other small runs take one step under the body, never under 12.
+    static let titleScale: CGFloat = 1.875
+    static let headingScales: [CGFloat] = [1.625, 1.3125, 1.125]
+
+    static func smallSize(_ body: CGFloat) -> CGFloat {
+        max(TextSize.caption.rawValue, (body * 0.875).rounded())
+    }
 
     init(style: MarkdownStyle) {
         self.style = style
@@ -156,13 +172,6 @@ final class WysiwygEngine {
         let italicFont = NSFontManager.shared.convert(bodyFont, toHaveTrait: .italicFontMask)
         let boldItalicFont = NSFontManager.shared.convert(boldFont, toHaveTrait: .italicFontMask)
 
-        let blank = NSMutableParagraphStyle()
-        blank.minimumLineHeight = 14
-        blank.maximumLineHeight = 14
-        let extraBlank = NSMutableParagraphStyle()
-        extraBlank.minimumLineHeight = 0.1
-        extraBlank.maximumLineHeight = 0.1
-
         func heading(size: CGFloat, weight: NSFont.Weight, before: CGFloat, after: CGFloat,
                      color: NSColor = ink) -> [NSAttributedString.Key: Any] {
             [
@@ -172,7 +181,9 @@ final class WysiwygEngine {
             ]
         }
 
-        let mono = NSFont.monospacedSystemFont(ofSize: (fontSize * 0.85).rounded(), weight: .regular)
+        func scaled(_ ratio: CGFloat) -> CGFloat { (fontSize * ratio).rounded() }
+        let small = smallSize(fontSize)
+        let mono = NSFont.monospacedSystemFont(ofSize: small, weight: .regular)
 
         return MarkdownStyle(
             fontSize: fontSize,
@@ -184,15 +195,13 @@ final class WysiwygEngine {
                 .foregroundColor: ink,
                 .paragraphStyle: paragraph(lineHeight: bodyLineHeight),
             ],
-            blankLineParagraph: blank,
-            extraBlankLineParagraph: extraBlank,
             // PingFang's Bold reads heavy in Chinese headings: Semibold, a
             // touch smaller, sitting closer to its paragraph (board ⑲ ④).
-            title: heading(size: 30, weight: .semibold, before: 0, after: 10),
+            title: heading(size: scaled(titleScale), weight: .semibold, before: 0, after: 10),
             headings: [
-                heading(size: 26, weight: .semibold, before: 24, after: 8),
-                heading(size: 21, weight: .semibold, before: 16, after: 8),
-                heading(size: 18, weight: .semibold, before: 12, after: 4),
+                heading(size: scaled(headingScales[0]), weight: .semibold, before: 24, after: 8),
+                heading(size: scaled(headingScales[1]), weight: .semibold, before: 16, after: 8),
+                heading(size: scaled(headingScales[2]), weight: .semibold, before: 12, after: 4),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2, color: MarkdownPalette.tertiary),
@@ -218,11 +227,11 @@ final class WysiwygEngine {
             // .backgroundColor would also paint the line spacing below.
             highlight: [.textHighlight: MarkdownPalette.highlight],
             hashtag: [
-                .font: resolveFont(name: fontName, size: (fontSize * 0.85).rounded()),
+                .font: resolveFont(name: fontName, size: small),
                 .foregroundColor: MarkdownPalette.secondary,
             ],
             codeBlock: [
-                .font: NSFont.monospacedSystemFont(ofSize: (fontSize * 0.84).rounded(.down) + 0.5, weight: .regular),
+                .font: mono,
                 .foregroundColor: ink,
                 // The block background is drawn as one rounded box by
                 // CodeBlockLayoutManager (see the .codeBlockBackground marker
@@ -230,10 +239,10 @@ final class WysiwygEngine {
                 // a ragged per-line fill.
                 .paragraphStyle: paragraph(indent: codeTextIndent, tail: -codeTextIndent, lineSpacing: 6),
             ],
-            calloutTitleFont: NSFont.systemFont(ofSize: 14, weight: .semibold),
-            calloutBodyFont: resolveFont(name: fontName, size: fontSize - 1),
-            quoteAttributionFont: resolveFont(name: fontName, size: 12.5),
-            rawSourceFont: NSFont.monospacedSystemFont(ofSize: max(11, fontSize - 3), weight: .regular)
+            calloutTitleFont: NSFont.systemFont(ofSize: small, weight: .semibold),
+            calloutBodyFont: bodyFont,
+            quoteAttributionFont: resolveFont(name: fontName, size: small),
+            rawSourceFont: mono
         )
     }
 
@@ -256,9 +265,9 @@ final class WysiwygEngine {
         }
 
         return [
-            // Images: ![alt](url)
+            // Images: ![alt](url), the destination read by `InlineLink`
             WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(([^)]+)\)"#),
+                pattern: InlineLink.imagePattern,
                 analyze: { match, str in
                     let full = match.range
                     let altRange = match.range(at: 1)
@@ -276,7 +285,7 @@ final class WysiwygEngine {
 
             // Links: [text](url)
             WysiwygInlineRule(
-                pattern: try! NSRegularExpression(pattern: #"\[([^\]]+)\]\(([^)]+)\)"#),
+                pattern: InlineLink.linkPattern,
                 analyze: { match, str in
                     let full = match.range
                     let textRange = match.range(at: 1)
@@ -334,19 +343,11 @@ final class WysiwygEngine {
         let nsString = storage.string as NSString
 
         storage.beginEditing()
+        imageOccurrences.removeAll(keepingCapacity: true)
 
-        // Clear temporary attributes
-        for key: NSAttributedString.Key in [
-            .foregroundColor, .backgroundColor, .font, .underlineStyle, .underlineColor,
-            .strikethroughStyle, .strikethroughColor, .paragraphStyle, .attachment, .kern,
-            .codeBlockBackground, .codeBlockLanguage, .calloutType, .calloutIcon, .listMarker,
-            .blockquoteDepth, .inlinePill, .textHighlight, .horizontalRule,
-        ] {
-            storage.removeAttribute(key, range: fullRange)
-        }
-
-        // Apply base paragraph style to everything
-        storage.addAttributes(style.baseParagraph, range: fullRange)
+        // Start from the body style everywhere: one pass that also drops
+        // every mark from the last styling.
+        storage.setAttributes(style.baseParagraph, range: fullRange)
 
         // Lines, with and without their terminators. Block decorations go on
         // the enclosing range so consecutive lines form one continuous run.
@@ -376,10 +377,6 @@ final class WysiwygEngine {
 
         // The first heading before any other content is the note's title.
         var seenContent = false
-        // Inside a run of empty lines (only the first one keeps its height),
-        // or right under a heading (whose own spacing already does the job).
-        var previousLineBlank = false
-        var previousLineHeading = false
         // Code blocks and callouts get extra space around them, applied after
         // the loop so the neighbors' own paragraph styles don't overwrite it.
         var spacedBlocks: [NSRange] = []
@@ -469,24 +466,15 @@ final class WysiwygEngine {
                 continue
             }
 
-            if trimmed.isEmpty {
-                // The caret's blank line keeps a full body line so it can be
-                // typed into; other runs collapse to one fixed gap.
-                let paragraph: NSParagraphStyle = isActive
-                    ? Self.paragraph(lineHeight: style.lineHeight)
-                    : (previousLineBlank || previousLineHeading ? style.extraBlankLineParagraph : style.blankLineParagraph)
-                storage.addAttribute(.paragraphStyle, value: paragraph, range: line.enclosing)
-                previousLineBlank = true
-                continue
-            }
-            previousLineBlank = false
-            previousLineHeading = false
+            // Empty lines keep the body style: one full line each, never
+            // collapsed. Collapsing them (or only the ones away from the
+            // caret) made ↩ look dead and made text jump as the caret moved.
+            if trimmed.isEmpty { continue }
 
             // Headings
             if let heading = parseHeading(line: line.text) {
                 let isTitle = heading.level == 1 && !seenContent
                 seenContent = true
-                previousLineHeading = true
                 let attrs = isTitle ? style.title : style.headings[heading.level - 1]
                 storage.addAttributes(attrs, range: lineRange)
                 let marker = NSRange(location: lineRange.location + heading.markerRange.location,
@@ -552,7 +540,7 @@ final class WysiwygEngine {
         if let imageRule = inlineRules.first {
             imageRule.pattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
                 guard let match, !isInCode(match.range.location) else { return }
-                let urlString = nsString.substring(with: match.range(at: 2))
+                let urlString = nsString.substring(with: InlineLink.destinationRange(of: match))
                 let revealed = touchesCaret(match.range)
                 let markdown = revealed ? "" : nsString.substring(with: match.range)
                 let alt = nsString.substring(with: match.range(at: 1))
@@ -561,9 +549,9 @@ final class WysiwygEngine {
                    let url = ImageLoader.shared.resolveEmbed(urlString) {
                     replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth), revealed))
                 } else if let content = ImageLoader.shared.loadSync(urlString: urlString) {
-                    replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
-                                                                          caption: alt, maxWidth: maxWidth,
-                                                                          fillsLine: revealed), revealed))
+                    replacements.append((match.range, imageAttachment(content: content, source: markdown, url: urlString,
+                                                                      caption: alt, maxWidth: maxWidth,
+                                                                      revealed: revealed), revealed))
                 } else if isRemoteImageURL(urlString) {
                     ImageLoader.shared.loadAsync(urlString: urlString) { image in
                         if image != nil {
@@ -582,8 +570,9 @@ final class WysiwygEngine {
             if VideoFile.isVideo(url.path) {
                 replacements.append((match.range, videoAttachment(url: url, source: markdown, maxWidth: maxWidth), revealed))
             } else if let content = ImageLoader.shared.loadSync(urlString: url.path) {
-                replacements.append((match.range, ImageTextAttachment(content: content, markdownSource: markdown,
-                                                                      maxWidth: maxWidth, fillsLine: revealed), revealed))
+                replacements.append((match.range, imageAttachment(content: content, source: markdown, url: url.path,
+                                                                  caption: "", maxWidth: maxWidth, revealed: revealed),
+                                     revealed))
             }
         }
         replacements.sort { $0.range.location < $1.range.location }
@@ -703,7 +692,14 @@ final class WysiwygEngine {
         // range computed above valid.
         if let frontmatter, !frontmatterActive, NSMaxRange(frontmatter.range) <= storage.length {
             let source = (storage.string as NSString).substring(with: frontmatter.range)
-            let attachment = FrontmatterAttachment(frontmatter: frontmatter, markdownSource: source, maxWidth: maxWidth)
+            let key = "\(Int(maxWidth))|\(source)"
+            let attachment: FrontmatterAttachment
+            if let cached = frontmatterCache, cached.key == key {
+                attachment = cached.attachment
+            } else {
+                attachment = FrontmatterAttachment(frontmatter: frontmatter, markdownSource: source, maxWidth: maxWidth)
+                frontmatterCache = (key, attachment)
+            }
             let replacement = NSMutableAttributedString(attachment: attachment)
             replacement.addAttribute(.paragraphStyle, value: Self.paragraph(lineSpacing: 0, after: 16),
                                      range: NSRange(location: 0, length: replacement.length))
@@ -711,6 +707,121 @@ final class WysiwygEngine {
         }
 
         storage.endEditing()
+    }
+
+    // MARK: - Writing a restyle back
+
+    /// Makes `storage` equal to `styled` — text and attributes — touching
+    /// only what differs: the changed stretch of text is replaced, and in the
+    /// rest only runs whose attributes changed are set. Layout stays valid
+    /// wherever nothing changed, so a whole-note restyle costs a whole-note
+    /// relayout only when the whole note really looks different.
+    static func applyChanges(from styled: NSAttributedString, to storage: NSTextStorage) {
+        let old = storage.string as NSString
+        let new = styled.string as NSString
+        let oldLength = old.length, newLength = new.length
+        var oldChars = [unichar](repeating: 0, count: oldLength)
+        var newChars = [unichar](repeating: 0, count: newLength)
+        old.getCharacters(&oldChars, range: NSRange(location: 0, length: oldLength))
+        new.getCharacters(&newChars, range: NSRange(location: 0, length: newLength))
+
+        let shorter = min(oldLength, newLength)
+        var prefix = 0
+        while prefix < shorter, oldChars[prefix] == newChars[prefix] { prefix += 1 }
+        var suffix = 0
+        while suffix < shorter - prefix, oldChars[oldLength - 1 - suffix] == newChars[newLength - 1 - suffix] { suffix += 1 }
+
+        storage.beginEditing()
+        let oldMiddle = NSRange(location: prefix, length: oldLength - prefix - suffix)
+        let newMiddle = NSRange(location: prefix, length: newLength - prefix - suffix)
+        if oldMiddle.length > 0 || newMiddle.length > 0 {
+            storage.replaceCharacters(in: oldMiddle, with: styled.attributedSubstring(from: newMiddle))
+        }
+        // The text now matches; bring the attributes of the rest in line.
+        for range in [NSRange(location: 0, length: prefix), NSRange(location: newLength - suffix, length: suffix)]
+        where range.length > 0 {
+            styled.enumerateAttributes(in: range) { wanted, wantedRange, _ in
+                let wantedDictionary = wanted as NSDictionary
+                storage.enumerateAttributes(in: wantedRange) { current, currentRange, _ in
+                    if !wantedDictionary.isEqual(to: current) {
+                        storage.setAttributes(wanted, range: currentRange)
+                    }
+                }
+            }
+        }
+        storage.endEditing()
+    }
+
+    // MARK: - One line on its own
+
+    /// Whether the line at `lineRange` (with its break) in `storage` — styled
+    /// text, as the editor shows it — can be restyled by itself: its look
+    /// depends on nothing around it, so typing in it needn't restyle the
+    /// whole note. Lines that are, could turn into, or sit next to a block
+    /// (fences, callouts, quotes, tables, math, rules, the frontmatter), lines
+    /// with images and a possible title take the whole-note pass instead.
+    static func canStyleAlone(lineRange: NSRange, in storage: NSAttributedString) -> Bool {
+        let ns = storage.string as NSString
+        guard NSMaxRange(lineRange) <= ns.length else { return false }
+        let line = ns.substring(with: lineRange).trimmingCharacters(in: .newlines)
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        for prefix in ["```", "~~~", ":::", ">", "|", "$$", "#", "<", "===", "[^"] where trimmed.hasPrefix(prefix) {
+            // Headings are fine, except a possible title (`# `).
+            if prefix == "#", trimmed.hasPrefix("##") { continue }
+            return false
+        }
+        if isHorizontalRuleText(trimmed) { return false }
+        for marker in ["![", "$", "|", "\u{FFFC}"] where line.contains(marker) { return false }
+        // Inside the frontmatter (shown as source while the caret is in it).
+        if ns.hasPrefix("---"), let frontmatter = Frontmatter.parse(ns),
+           lineRange.location < NSMaxRange(frontmatter.range) { return false }
+
+        // Not inside a block, nor right before or after one (block spacing
+        // reaches into the neighbors' paragraph styles).
+        var around = lineRange
+        if around.location > 0 {
+            around = NSUnionRange(around, ns.lineRange(for: NSRange(location: around.location - 1, length: 0)))
+        }
+        if NSMaxRange(around) < ns.length {
+            around = NSUnionRange(around, ns.lineRange(for: NSRange(location: NSMaxRange(around), length: 0)))
+        }
+        var inBlock = false
+        for key: NSAttributedString.Key in [.codeBlockBackground, .calloutType, .blockquoteDepth, .horizontalRule] {
+            storage.enumerateAttribute(key, in: around) { value, _, stop in
+                if value != nil { inBlock = true; stop.pointee = true }
+            }
+            if inBlock { return false }
+        }
+        return true
+    }
+
+    private static func isHorizontalRuleText(_ trimmed: String) -> Bool {
+        let compact = trimmed.replacingOccurrences(of: " ", with: "")
+        guard compact.count >= 3, let first = compact.first, "-*_".contains(first) else { return false }
+        return compact.allSatisfy { $0 == first }
+    }
+
+    /// `line` (with its break) styled exactly as the whole-note pass styles
+    /// it in place — for a line that `canStyleAlone`. `cursorInLine` is the
+    /// caret's offset in the line, or -1 when it is elsewhere.
+    func styledLine(_ line: String, cursorInLine: Int, maxWidth: CGFloat) -> NSAttributedString {
+        let storage = NSTextStorage(string: line)
+        applyStyle(to: storage, cursorLocation: cursorInLine, maxWidth: maxWidth)
+        return storage
+    }
+
+    private func imageAttachment(content: LoadedMarkdownImage, source: String, url: String, caption: String,
+                                 maxWidth: CGFloat, revealed: Bool) -> ImageTextAttachment {
+        let base = "\(Int(maxWidth))|\(revealed)|\(url)|\(caption)|\(source)"
+        let occurrence = imageOccurrences[base, default: 0]
+        imageOccurrences[base] = occurrence + 1
+        let key = "\(base)#\(occurrence)"
+        if let cached = imageCache[key] { return cached }
+        if imageCache.count > 600 { imageCache.removeAll() }
+        let attachment = ImageTextAttachment(content: content, markdownSource: source, caption: caption,
+                                             maxWidth: maxWidth, fillsLine: revealed)
+        imageCache[key] = attachment
+        return attachment
     }
 
     private func videoAttachment(url: URL, source: String, maxWidth: CGFloat) -> VideoAttachment {
@@ -911,16 +1022,19 @@ final class WysiwygEngine {
             default: return .other
             }
         }
-        func isHidden(_ i: Int) -> Bool {
-            guard let font = storage.attribute(.font, at: i, effectiveRange: nil) as? NSFont else { return false }
-            return font.pointSize < 1 || font.isFixedPitch
-        }
-        func addKern(_ value: CGFloat, at i: Int) {
-            let existing = (storage.attribute(.kern, at: i, effectiveRange: nil) as? CGFloat) ?? 0
-            storage.addAttribute(.kern, value: existing + value, range: NSRange(location: i, length: 1))
-        }
 
+        // One pass over font runs (not a lookup per character): collapsed
+        // syntax and monospaced runs are skipped.
+        var hidden: [NSRange] = []
+        storage.enumerateAttribute(.font, in: NSRange(location: 0, length: length)) { value, range, _ in
+            if let font = value as? NSFont, font.pointSize < 1 || font.isFixedPitch { hidden.append(range) }
+        }
+        var chars = [unichar](repeating: 0, count: length)
+        string.getCharacters(&chars, range: NSRange(location: 0, length: length))
+
+        var gaps: [Int] = []
         var codeIndex = 0
+        var hiddenIndex = 0
         var previous: (index: Int, kind: Kind)? = nil
         for i in 0..<length {
             while codeIndex < codeBlocks.count, NSMaxRange(codeBlocks[codeIndex]) <= i { codeIndex += 1 }
@@ -928,15 +1042,20 @@ final class WysiwygEngine {
                 previous = nil
                 continue
             }
-            let c = string.character(at: i)
+            let c = chars[i]
             if c == 0x0A || c == 0x2028 || c == 0x2029 { previous = nil; continue }
-            if isHidden(i) { continue }
+            while hiddenIndex < hidden.count, NSMaxRange(hidden[hiddenIndex]) <= i { hiddenIndex += 1 }
+            if hiddenIndex < hidden.count, NSLocationInRange(i, hidden[hiddenIndex]) { continue }
             let k = kind(c)
             if let prev = previous,
                (prev.kind == .han && k == .latin) || (prev.kind == .latin && k == .han) {
-                addKern(boundaryGap, at: prev.index)
+                gaps.append(prev.index)
             }
             previous = (i, k)
+        }
+        for i in gaps {
+            let existing = (storage.attribute(.kern, at: i, effectiveRange: nil) as? CGFloat) ?? 0
+            storage.addAttribute(.kern, value: existing + boundaryGap, range: NSRange(location: i, length: 1))
         }
     }
 
@@ -978,7 +1097,7 @@ final class WysiwygEngine {
 
         let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 17)
         let color = MarkdownPalette.primary
-        let mono = NSFont.monospacedSystemFont(ofSize: max(11, bodyFont.pointSize - 1), weight: .regular)
+        let mono = style.rawSourceFont
 
         for (index, span) in spans.enumerated().reversed() {
             guard NSMaxRange(span.range) <= storage.length else { continue }
@@ -1019,8 +1138,8 @@ final class WysiwygEngine {
         guard !tables.isEmpty else { return }
 
         let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 16)
-        let cellFont = NSFont.systemFont(ofSize: (bodyFont.pointSize * 0.875).rounded())
-        let mono = NSFont.monospacedSystemFont(ofSize: max(11, bodyFont.pointSize - 1), weight: .regular)
+        let cellFont = NSFont.systemFont(ofSize: Self.smallSize(bodyFont.pointSize))
+        let mono = style.rawSourceFont
 
         for (index, item) in tables.enumerated().reversed() {
             guard NSMaxRange(item.range) <= storage.length else { continue }
@@ -1045,7 +1164,9 @@ final class WysiwygEngine {
     private func tableAttachment(for table: MarkdownTable, source: String, font: NSFont, maxWidth: CGFloat) -> TableAttachment {
         let key = "\(Int(maxWidth))|\(source)"
         if let cached = tableCache[key] { return cached }
-        let attachment = TableAttachment(table: table, markdownSource: source, font: font, maxWidth: maxWidth)
+        let strong = style.bold[.foregroundColor] as? NSColor ?? MarkdownPalette.strong
+        let attachment = TableAttachment(table: table, markdownSource: source, font: font, maxWidth: maxWidth,
+                                         strongColor: strong)
         tableCache[key] = attachment
         return attachment
     }

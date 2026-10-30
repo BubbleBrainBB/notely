@@ -1,0 +1,16 @@
+{
+  "name": "notely-wechat-renderer",
+  "private": true,
+  "description": "Notely's WeChat renderer, forked from the wechat-black-red skill: sources in src/, bundled by build.mjs.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node src/scripts/check.mjs && node src/scripts/check-flows.mjs"
+  },
+  "dependencies": {
+    "markdown-it-cjk-friendly": "3.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

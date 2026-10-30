@@ -9,3 +9,6 @@ xcuserdata/
 
 # Local tool state
 .workbuddy/
+
+# Build inputs for the bundled WeChat renderer (npm install in Tools/wechat-renderer)
+/Tools/wechat-renderer/node_modules/

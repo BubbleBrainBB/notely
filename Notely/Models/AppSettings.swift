@@ -13,6 +13,7 @@ enum AppSettings {
     static let autoUpdatesKey = "notely.autoUpdates"
     static let accentColorKey = "notely.accentColor"
     static let workspacePathKey = "notely.workspacePath"
+    static let recentWorkspacesKey = "notely.recentWorkspaces"
     /// Only read to migrate away from the removed theme presets.
     static let appThemeKey = "notely.appTheme"
     static let editorFontKey = "notely.editorFont"
@@ -28,6 +29,34 @@ enum AppSettings {
     static let includeFrontmatterKey = "notely.includeFrontmatter"
     static let preserveTagsKey = "notely.preserveTags"
     static let imageHandlingKey = "notely.imageHandling"
+    /// Extensions (Settings › Extensions), each off until turned on.
+    static let wechatExtensionKey = "notely.extensions.wechat"
+    static let wechatThemeKey = "notely.wechat.theme"
+
+    static var wechatExtension: Bool {
+        get { UserDefaults.standard.bool(forKey: wechatExtensionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: wechatExtensionKey) }
+    }
+
+    /// The Xiaohongshu Cards extension and its defaults (each note may
+    /// choose its own template and size in the preview).
+    static let xhsExtensionKey = "notely.extensions.xiaohongshu"
+    static let xhsTemplateKey = "notely.xhs.template"
+    static let xhsRatioKey = "notely.xhs.ratio"
+    static let xhsPageNumbersKey = "notely.xhs.pageNumbers"
+    static let xhsNameKey = "notely.xhs.name"
+    static let xhsHandleKey = "notely.xhs.handle"
+    static let xhsAvatarKey = "notely.xhs.avatar"
+    static let xhsEndCardKey = "notely.xhs.endCard"
+    static let xhsEndLineKey = "notely.xhs.endLine"
+
+    static var xhsExtension: Bool {
+        get { UserDefaults.standard.bool(forKey: xhsExtensionKey) }
+        set { UserDefaults.standard.set(newValue, forKey: xhsExtensionKey) }
+    }
+
+    /// Either publishing extension on: the toolbar's preview button shows.
+    static var anyPublishExtension: Bool { wechatExtension || xhsExtension }
 
     static var theme: String {
         get { UserDefaults.standard.string(forKey: themeKey) ?? "system" }
@@ -72,6 +101,19 @@ enum AppSettings {
     }
 
 
+    static let colorThemeKey = "notely.colorTheme"
+    static let appearanceModeKey = "notely.appearanceMode"
+
+    static var colorTheme: AppTheme {
+        get { UserDefaults.standard.string(forKey: colorThemeKey).flatMap(AppTheme.init(rawValue:)) ?? .white }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: colorThemeKey) }
+    }
+
+    static var appearanceMode: AppearanceMode {
+        get { UserDefaults.standard.string(forKey: appearanceModeKey).flatMap(AppearanceMode.init(rawValue:)) ?? .light }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: appearanceModeKey) }
+    }
+
     /// The 拾页 design's blue.
     static let defaultAccentHex = "#1D6FC2"
 
@@ -83,6 +125,21 @@ enum AppSettings {
     static var workspacePath: String {
         get { UserDefaults.standard.string(forKey: workspacePathKey) ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: workspacePathKey) }
+    }
+
+    /// Folders opened before, most recent first, for the welcome page's
+    /// Recent list. Before the list existed only the last folder was kept,
+    /// so that one seeds it.
+    static var recentWorkspaces: [String] {
+        get {
+            if let list = UserDefaults.standard.stringArray(forKey: recentWorkspacesKey) { return list }
+            return workspacePath.isEmpty ? [] : [workspacePath]
+        }
+        set { UserDefaults.standard.set(newValue, forKey: recentWorkspacesKey) }
+    }
+
+    static func noteRecentWorkspace(_ path: String) {
+        recentWorkspaces = Array(([path] + recentWorkspaces.filter { $0 != path }).prefix(5))
     }
 
     // MARK: - Appearance

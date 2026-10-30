@@ -1,47 +1,46 @@
 import AppKit
 import SwiftUI
 
-/// Editor colors from the 拾页 Markdown spec (design canvas board ⑩).
+/// Editor colors from the 拾页 Markdown spec (design canvas board ⑩). Each
+/// follows the theme and resolves light or dark when drawn (ColorTokens).
 enum MarkdownPalette {
-    static func hex(_ value: UInt32) -> NSColor {
-        NSColor(srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
-                green: CGFloat((value >> 8) & 0xFF) / 255,
-                blue: CGFloat(value & 0xFF) / 255,
-                alpha: 1)
-    }
+    static func hex(_ value: UInt32) -> NSColor { .hex(value) }
 
-    static let primary = hex(0x37352F)
+    /// One color for light, another for dark, the same in every theme.
+    static func adaptive(_ light: UInt32, _ dark: UInt32) -> NSColor { .adaptive(light: light, dark: dark) }
+
+    static let primary = NSColor.themed(\.text)
     /// Bold text when the accent is too close to the body ink to tell apart
-    /// (the Ink accent): a step darker, so **strong** still reads at a glance.
-    static let strong = hex(0x111110)
+    /// (the Ink accent): a step stronger, so **strong** still reads at a glance.
+    static let strong = NSColor.themed(\.strongInk)
 
-    /// Bold text in the user's accent color; the deeper ink for the Ink accent.
+    /// Bold text in the user's accent color; the stronger ink for the Ink accent.
     static func strong(accentHex: String) -> NSColor {
         let digits = accentHex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
         guard let value = UInt32(digits, radix: 16), value != 0x37352F else { return strong }
         return hex(value)
     }
-    static let secondary = hex(0x55534E)
-    static let tertiary = hex(0x73726E)
-    static let faint = hex(0x9B9A97)
+    static let secondary = NSColor.themed(\.text2)
+    static let tertiary = NSColor.themed(\.text3)
+    static let faint = NSColor.themed(\.faintText)
     /// Markdown syntax revealed on the caret's paragraph.
-    static let marker = hex(0xC7C6C2)
-    static let rule = hex(0xEDEDEB)
-    static let codeBlockBg = hex(0xF7F7F5)
-    static let inlineBg = hex(0xF1F1EF)
-    static let inlineCode = hex(0xC4402F)
-    static let linkUnderline = hex(0xD3D3CF)
-    static let highlight = hex(0xFBF3DB)
-    static let tableBorder = hex(0xE9E9E7)
-    static let checkboxBorder = hex(0xB4B3AF)
-    static let nestedQuoteBar = hex(0xD3D3CF)
+    static let marker = NSColor.themed(\.marker)
+    static let rule = NSColor.themed(\.rule)
+    static let codeBlockBg = NSColor.themed(\.codeBlock)
+    static let inlineBg = NSColor.themed(\.inlineCode)
+    static let inlineCode = adaptive(0xC4402F, 0xE5735F)
+    static let linkUnderline = NSColor.themed(\.linkUnderline)
+    static let highlight = NSColor.themed(\.highlight)
+    static let tableBorder = NSColor.themed(\.tableBorder)
+    static let checkboxBorder = NSColor.themed(\.faintIcon)
+    static let nestedQuoteBar = NSColor.themed(\.linkUnderline)
 
-    static let syntaxKeyword = hex(0x9065B0)
-    static let syntaxString = hex(0x448361)
-    static let syntaxNumber = hex(0x9A6B12)
+    static let syntaxKeyword = adaptive(0x9065B0, 0xB794D6)
+    static let syntaxString = adaptive(0x448361, 0x6FB08A)
+    static let syntaxNumber = adaptive(0x9A6B12, 0xD1A04A)
 
     /// The user's accent (Settings › Appearance), for checked to-dos.
-    static var accent: NSColor { NSColor(Color.accent) }
+    static var accent: NSColor { ThemeManager.shared.accentNSColor }
 }
 
 extension NSAttributedString.Key {
@@ -95,6 +94,15 @@ final class ListMarker: NSObject {
         self.indent = indent
         self.font = font
     }
+
+    // Equal by what they draw, so a restyle that rebuilds an unchanged list
+    // leaves its lines alone (WysiwygEngine.applyChanges).
+    override func isEqual(_ object: Any?) -> Bool {
+        guard let other = object as? ListMarker else { return false }
+        return kind == other.kind && indent == other.indent && font == other.font
+    }
+
+    override var hash: Int { indent.hashValue ^ font.hashValue }
 
     static let slotWidth: CGFloat = 24
 
@@ -191,7 +199,7 @@ final class CodeBlockLayoutManager: NSLayoutManager {
             guard let language = self.textStorage?.attribute(.codeBlockLanguage, at: range.location, effectiveRange: nil) as? String,
                   !language.isEmpty else { return }
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11),
+                .font: NSFont.systemFont(ofSize: TextSize.caption.rawValue),
                 .foregroundColor: MarkdownPalette.tertiary,
             ]
             let size = (language as NSString).size(withAttributes: attrs)
@@ -200,7 +208,8 @@ final class CodeBlockLayoutManager: NSLayoutManager {
     }
 
     private func drawCalloutIcons(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
-        enumerate(.calloutIcon, in: glyphsToShow) { value, _, gRange in
+        guard let storage = textStorage else { return }
+        enumerate(.calloutIcon, in: glyphsToShow) { value, range, gRange in
             guard let raw = value as? String else { return }
             let kind = CalloutKind(raw)
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
@@ -208,8 +217,14 @@ final class CodeBlockLayoutManager: NSLayoutManager {
             guard let image = NSImage(systemSymbolName: kind.symbolName, accessibilityDescription: nil)?
                 .withSymbolConfiguration(config) else { return }
             // The tagged character is the collapsed `:::`, so center on the
-            // title font's cap height rather than that character's font.
-            let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+            // title font's cap height rather than that character's font: the
+            // line's last character is always title text.
+            let text = storage.string as NSString
+            let line = text.paragraphRange(for: range)
+            var last = NSMaxRange(line) - 1
+            if last > line.location, text.character(at: last) == 0x0A { last -= 1 }
+            let font = storage.attribute(.font, at: last, effectiveRange: nil) as? NSFont
+                ?? NSFont.systemFont(ofSize: 14, weight: .semibold)
             let baseline = self.baselineY(forGlyphAt: gRange.location, origin: origin)
             let centerY = baseline - font.capHeight / 2
             let size = image.size

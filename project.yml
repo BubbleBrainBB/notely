@@ -31,6 +31,12 @@ targets:
         excludes:
           - "Resources/**"
       - path: Notely/Resources/Assets.xcassets
+      # The WeChat Article extension's renderer and themes (Tools/wechat-renderer).
+      - path: Notely/Resources/WeChat
+        type: folder
+      # The Xiaohongshu Cards extension's layout (cards.html/css/js).
+      - path: Notely/Resources/Xiaohongshu
+        type: folder
     info:
       path: Notely/Info.plist
       properties:
@@ -41,6 +47,7 @@ targets:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSSupportsAutomaticTermination: false
         NSSupportsSuddenTermination: false
+        NSPhotoLibraryAddUsageDescription: Notely adds the Xiaohongshu cards you export to Photos, so they reach your phone.
     settings:
       base:
         ENABLE_PREVIEWS: "YES"

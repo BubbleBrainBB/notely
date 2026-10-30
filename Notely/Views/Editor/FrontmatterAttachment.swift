@@ -22,17 +22,17 @@ final class FrontmatterAttachment: NSTextAttachment, MarkdownBackedAttachment {
 
     /// Tag pill colors from the design comps, cycled across list items.
     private static let pillColors: [(bg: NSColor, fg: NSColor)] = [
-        (MarkdownPalette.hex(0xFBF0D9), MarkdownPalette.hex(0x7A5410)),
-        (MarkdownPalette.hex(0xE8F1FB), MarkdownPalette.hex(0x1F4E80)),
-        (MarkdownPalette.hex(0xFDECEE), MarkdownPalette.hex(0x8A2F36)),
-        (MarkdownPalette.hex(0xE7F5EC), MarkdownPalette.hex(0x2F6B4A)),
-        (MarkdownPalette.hex(0xF3EEF8), MarkdownPalette.hex(0x6B4A8A)),
+        (MarkdownPalette.adaptive(0xFBF0D9, 0x3A3220), MarkdownPalette.adaptive(0x7A5410, 0xE8C77A)),
+        (MarkdownPalette.adaptive(0xE8F1FB, 0x1E2A38), MarkdownPalette.adaptive(0x1F4E80, 0x9CC4EE)),
+        (MarkdownPalette.adaptive(0xFDECEE, 0x3A2224), MarkdownPalette.adaptive(0x8A2F36, 0xEBA0A6)),
+        (MarkdownPalette.adaptive(0xE7F5EC, 0x1E2E25), MarkdownPalette.adaptive(0x2F6B4A, 0x8FCBA6)),
+        (MarkdownPalette.adaptive(0xF3EEF8, 0x2E2638), MarkdownPalette.adaptive(0x6B4A8A, 0xC6A9E0)),
     ]
 
     static func render(_ fields: [Frontmatter.Field], width: CGFloat) -> NSImage {
         let rows = max(fields.count, 1)
         let size = NSSize(width: max(width, 1), height: CGFloat(rows) * rowHeight + bottomPadding + 1)
-        let font = NSFont.systemFont(ofSize: 13)
+        let font = NSFont.systemFont(ofSize: TextSize.body.rawValue)
 
         return NSImage(size: size, flipped: true) { _ in
             let keyAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: MarkdownPalette.tertiary]
