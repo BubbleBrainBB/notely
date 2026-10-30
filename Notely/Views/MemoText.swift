@@ -44,7 +44,7 @@ enum MemoTypography {
 /// editor on every change.
 struct MemoTextEditor: NSViewRepresentable {
     @Binding var text: String
-    var size: CGFloat = 15
+    var size = TextSize.emphasis.rawValue
     var placeholder: String = ""
     var minHeight: CGFloat = 44
     /// Bump to move keyboard focus into the editor.
@@ -142,7 +142,7 @@ extension MemoTypography {
     static func highlight(_ storage: NSTextStorage, size: CGFloat) {
         let family = AppSettings.editorFont
         let base = font(size: size)
-        let mono = NSFont.monospacedSystemFont(ofSize: size * 0.88, weight: .regular)
+        let mono = NSFont.monospacedSystemFont(ofSize: WysiwygEngine.smallSize(size), weight: .regular)
         let struck: [NSAttributedString.Key: Any] = [
             .strikethroughStyle: NSUnderlineStyle.single.rawValue,
             .strikethroughColor: MarkdownPalette.faint,
@@ -186,7 +186,7 @@ extension MemoTypography {
 
 final class MemoNSTextView: NSTextView {
     var placeholder = ""
-    var placeholderFont = NSFont.systemFont(ofSize: 15)
+    var placeholderFont = NSFont.systemFont(ofSize: TextSize.emphasis.rawValue)
     var onSubmit: (() -> Void)?
     var onCancel: (() -> Void)?
     private var wantsFocus = false

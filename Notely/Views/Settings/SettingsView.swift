@@ -3,35 +3,23 @@ import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
 
-// Settings as one sheet of paper over the dimmed window (design board ㊶,
-// direction ㊵ A): read top to bottom — Look, Writing, Library — with the
-// group names in an italic margin and the choices as plain words, the
-// chosen one underlined in the accent. No cards, pills or switches. The
-// keyboard shortcuts are the same sheet slid over. Every row changes
-// something real — Export lives in the File menu and About in the app menu.
-
-// MARK: - Shared state
-
-@Observable
-final class SettingsTabState {
-    var page: SettingsPage = .settings
-}
-
-enum SettingsPage {
-    case settings, shortcuts, extensions
-}
+// Settings as one sheet of paper over the dimmed window
+// (artifacts/settings-redesign): a title, then Appearance, Writing, Library
+// and Publish read top to bottom, each a bold name over its rows, the groups
+// split by a hairline. Switches for on / off, pop-up menus for the rest; the
+// keyboard shortcuts fold out at the foot. Every row changes something real
+// — Export lives in the File menu and About in the app menu.
 
 // MARK: - Modal
 
 /// The settings sheet. Shown by AppShellView over a dimmed window; esc, ⌘.
 /// or a click outside closes it.
 struct SettingsModal: View {
-    @Environment(SettingsTabState.self) private var state
     @Environment(AppModel.self) private var appModel
     @Environment(ThemeManager.self) private var themeManager
     @Environment(\.colorScheme) private var colorScheme
 
-    static let width: CGFloat = 600
+    static let width: CGFloat = 560
     static let radius: CGFloat = 14
 
     private var isDark: Bool { colorScheme == .dark }
@@ -44,43 +32,25 @@ struct SettingsModal: View {
             sheet(maxHeight: max(260, proxy.size.height - 80))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onAppear { state.page = .settings }
     }
 
     private func sheet(maxHeight: CGFloat) -> some View {
-        ZStack(alignment: .top) {
-            switch state.page {
-            case .settings:
-                SettingsPageView(maxHeight: maxHeight, close: close,
-                                 showShortcuts: { show(.shortcuts) }, showExtensions: { show(.extensions) })
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-            case .shortcuts:
-                ShortcutsPageView(maxHeight: maxHeight) { show(.settings) }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            case .extensions:
-                ExtensionsPageView(maxHeight: maxHeight) { show(.settings) }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+        SettingsPage(maxHeight: maxHeight)
+            .frame(width: Self.width)
+            .modifier(SettingsSheetSurface(isGlass: themeManager.isGlass, isDark: isDark, shape: shape))
+            // The whole sheet takes clicks: a click on an empty spot must not
+            // fall through to the dimmed window and close it.
+            .contentShape(shape)
+            .shadow(color: .black.opacity(isDark ? 0.45 : 0.16), radius: 40, y: 30)
+            .background {
+                // esc and ⌘. close the sheet whichever control has focus.
+                ZStack {
+                    Button("Close Settings", action: close).keyboardShortcut(.cancelAction)
+                    Button("Close Settings", action: close).keyboardShortcut(".", modifiers: .command)
+                }
+                .opacity(0)
+                .accessibilityHidden(true)
             }
-        }
-        .frame(width: Self.width)
-        .modifier(SettingsSheetSurface(isGlass: themeManager.isGlass, isDark: isDark, shape: shape))
-        // The whole sheet takes clicks: a click on an empty spot must not
-        // fall through to the dimmed window and close it.
-        .contentShape(shape)
-        .shadow(color: .black.opacity(isDark ? 0.45 : 0.16), radius: 40, y: 30)
-        .background {
-            // esc and ⌘. close the sheet whichever control has focus.
-            ZStack {
-                Button("Close Settings", action: close).keyboardShortcut(.cancelAction)
-                Button("Close Settings", action: close).keyboardShortcut(".", modifiers: .command)
-            }
-            .opacity(0)
-            .accessibilityHidden(true)
-        }
-    }
-
-    private func show(_ page: SettingsPage) {
-        withAnimation(.easeInOut(duration: 0.24)) { state.page = page }
     }
 
     private func close() {
@@ -139,14 +109,13 @@ private struct WithinWindowBlur: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
-// MARK: - Pages
+// MARK: - Page
 
-/// A page of the sheet: a fixed header, then the content — at its own
-/// height when it fits, otherwise in a scroll view whose bottom edge fades
-/// to say there is more, with the editor's slim scroller.
+/// The sheet: a fixed header, then the content — at its own height when it
+/// fits, otherwise in a scroll view whose bottom edge fades to say there is
+/// more, with the editor's slim scroller.
 private struct SheetPage<Header: View, Content: View>: View {
     let maxHeight: CGFloat
-    var topPadding: CGFloat = 34
     @ViewBuilder let header: () -> Header
     @ViewBuilder let content: () -> Content
 
@@ -154,8 +123,8 @@ private struct SheetPage<Header: View, Content: View>: View {
         HeightCap(maxHeight: maxHeight) {
             VStack(spacing: 0) {
                 header()
-                    .padding(.top, topPadding)
-                    .padding(.horizontal, 44)
+                    .padding(.top, 24)
+                    .padding(.horizontal, 28)
                 ViewThatFits(in: .vertical) {
                     paddedContent
                     ScrollView(.vertical) {
@@ -176,8 +145,8 @@ private struct SheetPage<Header: View, Content: View>: View {
 
     private var paddedContent: some View {
         content()
-            .padding(.horizontal, 44)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -197,11 +166,8 @@ private struct HeightCap: Layout {
     }
 }
 
-private struct SettingsPageView: View {
+private struct SettingsPage: View {
     let maxHeight: CGFloat
-    let close: () -> Void
-    let showShortcuts: () -> Void
-    let showExtensions: () -> Void
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -209,320 +175,81 @@ private struct SettingsPageView: View {
 
     var body: some View {
         SheetPage(maxHeight: maxHeight) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Settings")
-                    .font(.system(size: 24, weight: .semibold, design: .serif))
-                    .tracking(-0.2)
-                    .foregroundColor(.primaryText)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                EscButton(action: close)
-            }
-            .padding(.bottom, 20)
+            Text("Settings")
+                .font(.notely(.title, weight: .semibold))
+                .foregroundColor(.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 4)
+                .accessibilityAddTraits(.isHeader)
         } content: {
             VStack(alignment: .leading, spacing: 0) {
-                SettingsSection(title: "Look", labelTop: 19) { LookSettings() }
-                SettingsSection(title: "Writing", labelTop: 12) { WritingSettings() }
-                SettingsSection(title: "Library", labelTop: 10) { LibrarySettings() }
-                // The sheet's other pages, as rows (design board ㊼ B).
-                SettingsSection(title: "More", labelTop: 12, isLast: true) {
-                    PageRow(title: "Extensions", status: ExtensionsSettings.summary, action: showExtensions)
-                    PageRow(title: "Keyboard shortcuts", isLast: true, action: showShortcuts)
-                }
+                SettingsSection(title: "Appearance", isFirst: true) { LookSettings() }
+                SettingsSection(title: "Writing") { WritingSettings() }
+                SettingsSection(title: "Library") { LibrarySettings() }
+                SettingsSection(title: "Publish") { PublishSettings() }
+                ShortcutsDisclosure()
+                    .padding(.vertical, 12)
+                    .overlay(alignment: .top) { SettingsHairline() }
                 Text("Notely \(version)")
-                    .font(.notely(12))
-                    .foregroundColor(.faintIcon)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.top, 20)
-            }
-        }
-    }
-}
-
-private struct ShortcutsPageView: View {
-    let maxHeight: CGFloat
-    let back: () -> Void
-
-    var body: some View {
-        SheetPage(maxHeight: maxHeight, topPadding: 26) {
-            VStack(alignment: .leading, spacing: 6) {
-                SettingsLink(title: "← Settings", size: 12, action: back)
-                Text("Keyboard Shortcuts")
-                    .font(.system(size: 20, weight: .semibold, design: .serif))
-                    .foregroundColor(.primaryText)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 14)
-        } content: {
-            ShortcutsSettings()
-        }
-    }
-}
-
-/// Optional tools, each off until turned on (design board ㊹): a page of
-/// the sheet like Keyboard Shortcuts, reached from the sheet's foot.
-private struct ExtensionsPageView: View {
-    let maxHeight: CGFloat
-    let back: () -> Void
-
-    var body: some View {
-        SheetPage(maxHeight: maxHeight, topPadding: 26) {
-            VStack(alignment: .leading, spacing: 6) {
-                SettingsLink(title: "← Settings", size: 12, action: back)
-                Text("Extensions")
-                    .font(.system(size: 20, weight: .semibold, design: .serif))
-                    .foregroundColor(.primaryText)
-                    .accessibilityAddTraits(.isHeader)
-                Text("Tools for some kinds of writing. Turn on the ones you use; the rest stay out of the menus.")
-                    .font(.notely(12.5))
+                    .font(.notely(.caption))
                     .foregroundColor(.faintText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 14)
-        } content: {
-            VStack(alignment: .leading, spacing: 0) {
-                ExtensionsSettings()
-                Text("Extensions are part of Notely; nothing is downloaded.")
-                    .font(.notely(12))
-                    .foregroundColor(.faintIcon)
-                    .padding(.top, 20)
+                    .padding(.top, 4)
             }
         }
-    }
-}
-
-private struct ExtensionsSettings: View {
-    /// What's on, for the row that leads here.
-    static var summary: String {
-        switch (AppSettings.wechatExtension, AppSettings.xhsExtension) {
-        case (true, true): "WeChat Article, Xiaohongshu Cards on"
-        case (true, false): "WeChat Article on"
-        case (false, true): "Xiaohongshu Cards on"
-        case (false, false): "None on"
-        }
-    }
-
-    @AppStorage(AppSettings.wechatExtensionKey) private var wechat = false
-    @AppStorage(AppSettings.wechatThemeKey) private var theme = WeChatRenderer.Theme.blackRed.rawValue
-    @AppStorage(AppSettings.xhsExtensionKey) private var xhs = false
-
-    var body: some View {
-        SettingsSection(title: "Publish", labelTop: 14, isLast: true) {
-            SettingRow(title: "WeChat Article", detail: "Lay a note out for the WeChat Official Account editor.") {
-                OnOffChoice(isOn: $wechat.animation(.easeInOut(duration: 0.2)), label: "WeChat Article")
-            }
-            if wechat {
-                VStack(spacing: 0) {
-                    SettingRow(title: "Theme") {
-                        TextChoice(options: WeChatRenderer.Theme.allCases.map { ($0.name, $0.rawValue) },
-                                   selection: $theme, accessibilityLabel: "WeChat theme")
-                    }
-                    SettingRow(title: "Shortcuts") {
-                        Text("Preview ⌃⌘P   Copy ⌥⌘C")
-                            .font(.notely(12.5))
-                            .foregroundColor(.faintText)
-                    }
-                }
-                .padding(.leading, 16)
-                .overlay(alignment: .bottom) { Rectangle().fill(Color.settingsRowLine).frame(height: 1) }
-                .transition(.opacity)
-            }
-            SettingRow(title: "Xiaohongshu Cards", detail: "Turn a note into image cards and a caption for Xiaohongshu.",
-                       isLast: !xhs) {
-                OnOffChoice(isOn: $xhs.animation(.easeInOut(duration: 0.2)), label: "Xiaohongshu Cards")
-            }
-            if xhs {
-                XhsSettings()
-                    .padding(.leading, 16)
-                    .transition(.opacity)
-            }
-        }
-    }
-}
-
-/// Xiaohongshu Cards' defaults (board ㊾ ⑤). The preview may choose another
-/// template or size for one note; that stays with the note.
-private struct XhsSettings: View {
-    @AppStorage(AppSettings.xhsTemplateKey) private var template = XhsCards.Template.memo.rawValue
-    @AppStorage(AppSettings.xhsRatioKey) private var ratio = XhsCards.Ratio.portrait.rawValue
-    @AppStorage(AppSettings.xhsPageNumbersKey) private var pageNumbers = true
-    @AppStorage(AppSettings.xhsNameKey) private var name = ""
-    @AppStorage(AppSettings.xhsHandleKey) private var handle = ""
-    @AppStorage(AppSettings.xhsAvatarKey) private var avatar = ""
-    @AppStorage(AppSettings.xhsEndCardKey) private var endCard = false
-    @AppStorage(AppSettings.xhsEndLineKey) private var endLine = ""
-
-    var body: some View {
-        VStack(spacing: 0) {
-            SettingRow(title: "Template") {
-                TextChoice(options: XhsCards.Template.allCases.map { ($0.name, $0.rawValue) },
-                           selection: $template, accessibilityLabel: "Xiaohongshu template")
-            }
-            SettingRow(title: "Size") {
-                TextChoice(options: XhsCards.Ratio.allCases.map { ($0.rawValue, $0.rawValue) },
-                           selection: $ratio, accessibilityLabel: "Card size")
-            }
-            SettingRow(title: "Avatar", detail: "For the Post template.") {
-                HStack(spacing: 10) {
-                    AvatarDot(path: avatar, name: name)
-                    if !avatar.isEmpty {
-                        SettingsLink(title: "Remove") { removeAvatar() }
-                    }
-                    SettingsLink(title: "Choose…", isPrimary: true) { chooseAvatar() }
-                }
-            }
-            SettingRow(title: "Name") {
-                SettingsTextField(placeholder: NSFullUserName(), text: $name)
-            }
-            SettingRow(title: "Handle", detail: "On every card's foot; empty leaves it off.") {
-                SettingsTextField(placeholder: "@name", text: $handle)
-            }
-            SettingRow(title: "Page numbers") {
-                OnOffChoice(isOn: $pageNumbers, label: "Page numbers")
-            }
-            SettingRow(title: "End card", detail: "A last card with your name and one line.") {
-                OnOffChoice(isOn: $endCard.animation(.easeInOut(duration: 0.2)), label: "End card")
-            }
-            if endCard {
-                SettingRow(title: "End card line") {
-                    SettingsTextField(placeholder: "One line to close with", text: $endLine, width: 220)
-                }
-            }
-            SettingRow(title: "Shortcuts", isLast: true) {
-                Text("Preview ⌃⌘P   Add to Photos ⌥⌘C")
-                    .font(.notely(12.5))
-                    .foregroundColor(.faintText)
-            }
-        }
-    }
-
-    /// The picture is copied into Notely's own folder, so moving or
-    /// deleting the original doesn't take it off the cards.
-    private func chooseAvatar() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.png, .jpeg, .heic, .webP, .tiff]
-        panel.allowsMultipleSelection = false
-        panel.message = "Choose a picture for your avatar on Post cards."
-        guard panel.runModal() == .OK, let source = panel.url,
-              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
-        let folder = support.appendingPathComponent("Notely", isDirectory: true)
-        let target = folder.appendingPathComponent("xhs-avatar-\(Int(Date().timeIntervalSince1970)).\(source.pathExtension.lowercased())")
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: source, to: target)
-            removeAvatar()
-            avatar = target.path
-        } catch {
-            NSSound.beep()
-        }
-    }
-
-    private func removeAvatar() {
-        if !avatar.isEmpty { try? FileManager.default.removeItem(atPath: avatar) }
-        avatar = ""
-    }
-}
-
-/// The avatar as the Post template shows it: the picture, or the name's
-/// first letter on a quiet circle.
-private struct AvatarDot: View {
-    let path: String
-    let name: String
-
-    var body: some View {
-        Group {
-            if !path.isEmpty, let image = NSImage(contentsOfFile: path) {
-                Image(nsImage: image).resizable().scaledToFill()
-            } else {
-                Text(String((name.isEmpty ? NSFullUserName() : name).prefix(1)).uppercased())
-                    .font(.notely(11, weight: .semibold))
-                    .foregroundColor(Color(nsColor: .adaptive(light: 0x6B6457, dark: 0xC9C9C6)))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(nsColor: .adaptive(light: 0xE4DFD4, dark: 0x34363B)))
-            }
-        }
-        .frame(width: 24, height: 24)
-        .clipShape(Circle())
-        .accessibilityHidden(true)
-    }
-}
-
-/// A plain text field on the sheet: a hairline box, the text in the
-/// sheet's type.
-private struct SettingsTextField: View {
-    let placeholder: String
-    @Binding var text: String
-    var width: CGFloat = 160
-
-    var body: some View {
-        TextField(placeholder, text: $text)
-            .textFieldStyle(.plain)
-            .font(.notely(12.5))
-            .foregroundColor(.primaryText)
-            .padding(.horizontal, 8)
-            .frame(width: width, height: 24)
-            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primaryText.opacity(0.03)))
-            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Color.primaryText.opacity(0.12), lineWidth: 1))
-            .accessibilityLabel(placeholder)
     }
 }
 
 // MARK: - Building blocks
 
-/// Separator lines on the sheet: between rows, and the stronger one between
-/// groups. Drawn in the text color so they step down with dark mode.
-private extension Color {
-    static var settingsRowLine: Color { Color.primaryText.opacity(0.07) }
-    static var settingsGroupLine: Color { Color.primaryText.opacity(0.11) }
-}
-
-/// A group: its name in italics in the left margin, level with the first
-/// row's label, and a full-width hairline after it.
+/// A group: its name in bold over its rows, a hairline above every group
+/// but the first.
 private struct SettingsSection<Content: View>: View {
     let title: String
-    /// Where the name sits so it lines up with the first row's label.
-    var labelTop: CGFloat = 12
-    var isLast = false
+    var isFirst = false
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 20) {
-                Text(title)
-                    .font(.system(size: 14, design: .serif).italic())
-                    .foregroundColor(.faintText)
-                    .frame(width: 92, alignment: .leading)
-                    .padding(.top, labelTop)
-                    .accessibilityAddTraits(.isHeader)
-                VStack(spacing: 0) { content() }
-            }
-            if !isLast {
-                Rectangle().fill(Color.settingsGroupLine).frame(height: 1).padding(.vertical, 14)
-            }
+            Text(title)
+                .font(.notely(.body, weight: .semibold))
+                .foregroundColor(.primaryText)
+                .frame(height: 32)
+                .accessibilityAddTraits(.isHeader)
+            content()
+        }
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) {
+            if !isFirst { SettingsHairline() }
         }
     }
 }
 
-/// One setting: its label (and a note under it) left, the choice right.
+/// One device pixel, between groups.
+private struct SettingsHairline: View {
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        Rectangle().fill(Color.primaryText.opacity(0.09)).frame(height: 1 / displayScale)
+    }
+}
+
+/// One setting: its name left (with what it points at under it, where
+/// there is something), the control right.
 private struct SettingRow<Control: View>: View {
     let title: String
     var detail: String? = nil
-    var height: CGFloat = 42
-    var isLast = false
     @ViewBuilder let control: () -> Control
 
     var body: some View {
         HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.notely(13.5))
+                    .font(.notely(.body))
                     .foregroundColor(.primaryText)
                     .lineLimit(1)
                 if let detail {
                     Text(detail)
-                        .font(.notely(11.5))
+                        .font(.notely(.caption))
                         .foregroundColor(.faintText)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -531,224 +258,180 @@ private struct SettingRow<Control: View>: View {
             Spacer(minLength: 12)
             control()
         }
-        .padding(.vertical, detail == nil ? 0 : 6)
-        .frame(minHeight: detail == nil ? height : max(height, 50))
-        .overlay(alignment: .bottom) {
-            if !isLast { Rectangle().fill(Color.settingsRowLine).frame(height: 1) }
-        }
+        .frame(minHeight: 36)
         .accessibilityElement(children: .contain)
     }
 }
 
-/// The choices as a quiet segmented control (design board ㊽ C): a faint
-/// track, the chosen word on a raised white segment that slides to a new
-/// choice. A click takes effect at once. With keyboard navigation, Tab
-/// reaches the row and ←/→ change the choice; focus rings the segment in
-/// the accent.
-private struct TextChoice<Value: Hashable>: View {
+/// On / off: the system switch, small, in the accent.
+private struct SettingsSwitch: View {
+    @Binding var isOn: Bool
+    let label: String
+
+    var body: some View {
+        Toggle(label, isOn: $isOn)
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .tint(.accent)
+            .labelsHidden()
+    }
+}
+
+/// The sheet's controls share one look: a light gray fill, no outline, a
+/// step darker under the pointer (or while its menu is open).
+private struct ControlFill: ViewModifier {
+    var isActive = false
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .frame(height: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.inlineFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.primaryText.opacity(isHovering || isActive ? 0.05 : 0))
+                    )
+            )
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+    }
+}
+
+/// A pop-up closed: an optional swatch, the value, one small down chevron.
+private struct PopUpLabel: View {
+    let title: String
+    var font: Font = .notely(.body)
+    var icon: NSImage? = nil
+    var isActive = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let icon { Image(nsImage: icon) }
+            Text(title)
+                .font(font)
+                .foregroundColor(.primaryText)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundColor(.tertiaryText)
+        }
+        .padding(.horizontal, 10)
+        .frame(minWidth: 120)
+        .modifier(ControlFill(isActive: isActive))
+    }
+}
+
+/// A pop-up menu: the choices open as a system menu, the current one
+/// checked.
+private struct PopUpChoice<Value: Hashable>: View {
     let options: [(label: String, value: Value)]
     @Binding var selection: Value
-    var accessibilityLabel: String = ""
-    @FocusState private var isFocused: Bool
-    @Namespace private var segment
-    @Environment(\.colorScheme) private var colorScheme
+    var icon: ((Value) -> NSImage)? = nil
+    let accessibilityLabel: String
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(options, id: \.value) { option in
-                ChoiceWord(label: option.label, isSelected: option.value == selection) {
-                    withAnimation(.easeOut(duration: 0.18)) { selection = option.value }
-                }
-                .background {
-                    if option.value == selection {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.14) : Color.white)
-                            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 1, y: 1)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .strokeBorder(isFocused ? Color.accent : Color.black.opacity(0.06),
-                                                  lineWidth: isFocused ? 1.5 : 0.5)
-                            }
-                            .matchedGeometryEffect(id: "segment", in: segment)
+        let current = options.first { $0.value == selection }
+        Menu {
+            Picker(accessibilityLabel, selection: $selection) {
+                ForEach(options, id: \.value) { option in
+                    if let icon {
+                        Label { Text(option.label) } icon: { Image(nsImage: icon(option.value)) }
+                            .tag(option.value)
+                    } else {
+                        Text(option.label).tag(option.value)
                     }
                 }
             }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            PopUpLabel(title: current?.label ?? "", icon: current.flatMap { icon?($0.value) })
         }
-        .padding(2)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.primaryText.opacity(colorScheme == .dark ? 0.08 : 0.05))
-        )
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
         .fixedSize()
-        .focusable(interactions: .activate)
-        .focused($isFocused)
-        .focusEffectDisabled()
-        .onKeyPress(.leftArrow) { step(-1) }
-        .onKeyPress(.rightArrow) { step(1) }
-        .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
     }
-
-    private func step(_ delta: Int) -> KeyPress.Result {
-        guard let index = options.firstIndex(where: { $0.value == selection }) else { return .ignored }
-        let next = index + delta
-        guard options.indices.contains(next) else { return .handled }
-        withAnimation(.easeOut(duration: 0.18)) { selection = options[next].value }
-        return .handled
-    }
 }
 
-private struct ChoiceWord: View {
-    let label: String
-    let isSelected: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Text(label)
-            .font(.notely(13))
-            .foregroundColor(isSelected || isHovering ? .primaryText : .tertiaryText)
-            .padding(.horizontal, 11)
-            .frame(height: 24)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: action)
-            .onHover { isHovering = $0 }
-            .animation(.easeOut(duration: 0.15), value: isHovering)
-            .accessibilityElement()
-            .accessibilityLabel(label)
-            .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-            .accessibilityAction { action() }
-    }
-}
-
-/// A row that opens another page of the sheet: its name, what's there, ›.
-/// The whole row is the button; under the pointer the status and › darken.
-private struct PageRow: View {
+/// A small action on the sheet.
+private struct FillButton: View {
     let title: String
-    var status: String? = nil
-    var isLast = false
     let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            SettingRow(title: title, isLast: isLast) {
-                HStack(spacing: 10) {
-                    if let status {
-                        Text(status)
-                            .font(.notely(12.5))
-                            .foregroundColor(isHovering ? .secondaryText : .faintText)
-                    }
-                    Text("›")
-                        .font(.notely(15))
-                        .foregroundColor(isHovering ? .secondaryText : .faintIcon)
-                        .accessibilityHidden(true)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .animation(.easeOut(duration: 0.15), value: isHovering)
-        .accessibilityLabel(status.map { "\(title), \($0)" } ?? title)
-    }
-}
-
-/// On / Off as two words, in place of a switch.
-private struct OnOffChoice: View {
-    @Binding var isOn: Bool
-    var label: String
-
-    var body: some View {
-        TextChoice(options: [("On", true), ("Off", false)], selection: $isOn, accessibilityLabel: label)
-    }
-}
-
-/// A text link: gray for the quiet actions, the accent for the main one.
-private struct SettingsLink: View {
-    let title: String
-    var size: CGFloat = 12.5
-    var isPrimary = false
-    let action: () -> Void
-    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.notely(size))
-                .foregroundColor(color)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .onHover { isHovering = $0 }
-    }
-
-    private var color: Color {
-        if isPrimary { return Color.accent.opacity(isHovering ? 0.8 : 1) }
-        return isHovering ? .primaryText : .tertiaryText
-    }
-}
-
-/// “esc” at the sheet's top right; a light fill on hover.
-private struct EscButton: View {
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Text("esc")
-                .font(.notely(12))
-                .foregroundColor(isHovering ? .secondaryText : .faintText)
-                .padding(.horizontal, 8)
-                .frame(height: 22)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isHovering ? Color.cardHover : .clear))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Close (esc)")
-        .accessibilityLabel("Close Settings")
-        .onHover { isHovering = $0 }
-    }
-}
-
-/// A small raised button (the memo editor's Cancel / Save).
-struct SettingsButton: View {
-    let title: String
-    let action: () -> Void
-    @State private var isHovering = false
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.notely(12.5))
+                .font(.notely(.body))
                 .foregroundColor(.primaryText)
-                .padding(.horizontal, 12)
-                .frame(height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(colorScheme == .dark ? Color.white.opacity(isHovering ? 0.16 : 0.12) : (isHovering ? Color.quietSurface : Color.white))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.12), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
-                .contentShape(Rectangle())
+                .padding(.horizontal, 10)
+                .modifier(ControlFill())
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .onHover { isHovering = $0 }
     }
 }
 
-// MARK: - Look
+/// A plain text field on the sheet, on the controls' gray fill.
+private struct SettingsTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var width: CGFloat = 180
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain)
+            .font(.notely(.body))
+            .foregroundColor(.primaryText)
+            .padding(.horizontal, 8)
+            .frame(width: width, height: 24)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.inlineFill))
+            .accessibilityLabel(placeholder)
+    }
+}
+
+/// A theme as a tiny desk — its window ground with a page on the right —
+/// for the Theme pop-up and its menu.
+enum ThemeSwatchImage {
+    static func make(_ theme: AppTheme, dark: Bool) -> NSImage {
+        NSImage(size: NSSize(width: 18, height: 13), flipped: false) { rect in
+            let p = ThemePalette.palette(theme, dark: dark)
+            let desk = NSBezierPath(roundedRect: rect, xRadius: 3, yRadius: 3)
+            if theme == .glass {
+                NSGradient(starting: .hex(dark ? 0x2B3038 : 0xE3EAF1), ending: .hex(dark ? 0x302C35 : 0xF5F2F7))?
+                    .draw(in: desk, angle: -45)
+            } else {
+                NSColor.hex(p.ground).setFill()
+                desk.fill()
+            }
+            let page = NSBezierPath(roundedRect: NSRect(x: rect.maxX - 12, y: 2, width: 10, height: rect.height - 4),
+                                    xRadius: 1, yRadius: 1)
+            NSColor.hex(p.page, alpha: theme == .glass ? 0.75 : 1).setFill()
+            page.fill()
+            let edge = dark ? NSColor.white.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.14)
+            edge.setStroke()
+            let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 0.25, dy: 0.25), xRadius: 2.75, yRadius: 2.75)
+            outline.lineWidth = 0.5
+            outline.stroke()
+            if p.page == p.ground {
+                page.lineWidth = 0.5
+                page.stroke()
+            }
+            return true
+        }
+    }
+}
+
+// MARK: - Appearance
 
 private struct LookSettings: View {
     @Environment(ThemeManager.self) private var themeManager
-    @State private var hoveredAccent: String?
+    @Environment(\.colorScheme) private var colorScheme
 
     private let accentColors: [(name: String, hex: String)] = [
         ("Blue", "#1D6FC2"),
@@ -758,98 +441,34 @@ private struct LookSettings: View {
         ("Red", "#C4402F"),
     ]
 
+    private var theme: Binding<AppTheme> {
+        Binding(get: { themeManager.theme }, set: { themeManager.setTheme($0) })
+    }
+
     private var mode: Binding<AppearanceMode> {
         Binding(get: { themeManager.mode }, set: { themeManager.setMode($0) })
     }
 
     var body: some View {
-        SettingRow(title: "Theme", height: 56) {
-            HStack(spacing: 16) {
-                ForEach(AppTheme.allCases) { theme in
-                    ThemeSwatch(theme: theme, isSelected: themeManager.theme == theme) {
-                        themeManager.setTheme(theme)
-                    }
-                }
-            }
+        let dark = colorScheme == .dark
+        SettingRow(title: "Theme") {
+            PopUpChoice(options: AppTheme.allCases.map { ($0.title, $0) }, selection: theme,
+                        icon: { ThemeSwatchImage.make($0, dark: dark) }, accessibilityLabel: "Theme")
         }
         SettingRow(title: "Mode") {
-            TextChoice(options: AppearanceMode.allCases.map { ($0 == .auto ? "Match System" : $0.title, $0) },
-                       selection: mode, accessibilityLabel: "Mode")
+            PopUpChoice(options: AppearanceMode.allCases.map { ($0 == .auto ? "Match System" : $0.title, $0) },
+                        selection: mode, accessibilityLabel: "Mode")
         }
-        SettingRow(title: "Accent", isLast: true) {
+        SettingRow(title: "Accent") {
             HStack(spacing: 11) {
-                // The hovered dot's name, quietly to its left.
-                Text(hoveredAccent ?? "")
-                    .font(.notely(11.5))
-                    .foregroundColor(.faintText)
-                    .padding(.trailing, 3)
-                    .animation(nil, value: hoveredAccent)
                 ForEach(accentColors, id: \.hex) { color in
                     AccentDot(hex: color.hex, isSelected: themeManager.accentHex == color.hex) {
                         themeManager.setAccent(color.hex)
                     }
-                    .onHover { hoveredAccent = $0 ? color.name : (hoveredAccent == color.name ? nil : hoveredAccent) }
+                    .help(color.name)
                     .accessibilityLabel(color.name)
                 }
             }
-        }
-    }
-}
-
-/// A theme as a tiny desk: the window's ground with a page floating on its
-/// right, in the current light or dark. The name sits underneath.
-private struct ThemeSwatch: View {
-    let theme: AppTheme
-    let isSelected: Bool
-    let action: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        let dark = colorScheme == .dark
-        let p = ThemePalette.palette(theme, dark: dark)
-        let swatch = RoundedRectangle(cornerRadius: 5, style: .continuous)
-        Button(action: action) {
-            VStack(spacing: 4) {
-                ZStack(alignment: .trailing) {
-                    ground(p, dark: dark)
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(Color(nsColor: .hex(p.page)).opacity(theme == .glass ? 0.72 : 1))
-                        .frame(width: 21)
-                        .padding(3)
-                }
-                .frame(width: 36, height: 26)
-                .clipShape(swatch)
-                .overlay {
-                    if isSelected {
-                        // 1.5 of paper, then 1.5 of accent, outside the swatch.
-                        swatch.strokeBorder(Color.editorBg, lineWidth: 1.5).padding(-1.5)
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.accent, lineWidth: 1.5).padding(-3)
-                    } else {
-                        swatch.strokeBorder(Color.primaryText.opacity(dark ? 0.14 : 0.08), lineWidth: 1)
-                    }
-                }
-                Text(theme.title)
-                    .font(.notely(11))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .foregroundColor(isSelected ? .primaryText : .faintText)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(theme.title) theme")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    /// Glass's ground is whatever shows through the window: a soft wash.
-    @ViewBuilder private func ground(_ p: ThemePalette, dark: Bool) -> some View {
-        if theme == .glass {
-            LinearGradient(colors: dark ? [Color(nsColor: .hex(0x2B3038)), Color(nsColor: .hex(0x302C35))]
-                                        : [Color(nsColor: .hex(0xE3EAF1)), Color(nsColor: .hex(0xF5F2F7))],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-        } else {
-            Color(nsColor: .hex(p.ground))
         }
     }
 }
@@ -906,47 +525,48 @@ private struct WritingSettings: View {
             SizeStepper(value: $fontSize, range: 12...24)
         }
         SettingRow(title: "Line spacing") {
-            TextChoice(options: LineSpacingPreset.allCases.map { ($0.label, $0) },
-                       selection: lineSpacing, accessibilityLabel: "Line spacing")
+            PopUpChoice(options: LineSpacingPreset.allCases.map { ($0.label, $0) },
+                        selection: lineSpacing, accessibilityLabel: "Line spacing")
         }
         SettingRow(title: "Line length") {
-            TextChoice(options: [("Narrow", "narrow"), ("Medium", "medium"), ("Wide", "wide")],
-                       selection: $editorWidth, accessibilityLabel: "Line length")
+            PopUpChoice(options: [("Narrow", "narrow"), ("Medium", "medium"), ("Wide", "wide")],
+                        selection: $editorWidth, accessibilityLabel: "Line length")
         }
         SettingRow(title: "Check spelling") {
-            OnOffChoice(isOn: $spellCheck, label: "Check spelling")
+            SettingsSwitch(isOn: $spellCheck, label: "Check spelling")
         }
-        SettingRow(title: "Smart quotes and dashes", detail: "\"quotes\" → “quotes”, -- → —", isLast: true) {
-            OnOffChoice(isOn: $smartPunctuation, label: "Smart quotes and dashes")
+        SettingRow(title: "Smart quotes and dashes") {
+            SettingsSwitch(isOn: $smartPunctuation, label: "Smart quotes and dashes")
         }
     }
 }
 
-/// − 16 +: two round, see-through buttons that fill on hover.
+/// − 16 +: one gray control; each end steps the size.
 private struct SizeStepper: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
 
     var body: some View {
-        HStack(spacing: 4) {
-            RoundStepButton(symbol: "minus", label: "Smaller", isEnabled: value > range.lowerBound) {
+        HStack(spacing: 0) {
+            StepButton(symbol: "minus", label: "Smaller", isEnabled: value > range.lowerBound) {
                 value = max(range.lowerBound, value - 1)
             }
             Text("\(Int(value))")
-                .font(.notely(13.5))
+                .font(.notely(.body))
                 .monospacedDigit()
                 .foregroundColor(.primaryText)
                 .frame(minWidth: 24)
                 .accessibilityLabel("Size \(Int(value))")
-            RoundStepButton(symbol: "plus", label: "Larger", isEnabled: value < range.upperBound) {
+            StepButton(symbol: "plus", label: "Larger", isEnabled: value < range.upperBound) {
                 value = min(range.upperBound, value + 1)
             }
         }
-        .padding(.trailing, -3)
+        .frame(height: 24)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.inlineFill))
     }
 }
 
-private struct RoundStepButton: View {
+private struct StepButton: View {
     let symbol: String
     let label: String
     let isEnabled: Bool
@@ -958,9 +578,12 @@ private struct RoundStepButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.secondaryText)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(isHovering && isEnabled ? Color.cardHover : .clear))
-                .contentShape(Circle())
+                .frame(width: 26, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isHovering && isEnabled ? Color.primaryText.opacity(0.06) : .clear)
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
@@ -972,7 +595,7 @@ private struct RoundStepButton: View {
 
 // MARK: - Font picker
 
-/// The editor's typeface, written in itself, with a small ▾. Opens a
+/// The editor's typeface, written in itself, as a pop-up. Opens a
 /// searchable list: System / New York / SF Mono (which NSFontManager does
 /// not expose as regular families) first, then every installed family, each
 /// in its own face.
@@ -1000,24 +623,15 @@ struct FontPicker: View {
         query.isEmpty ? fonts : fonts.filter { $0.lowercased().contains(query) }
     }
 
-    private func previewFont(for name: String, size: CGFloat) -> Font {
-        Font(WysiwygEngine.resolveFont(name: name, size: size))
+    private func previewFont(for name: String) -> Font {
+        Font(WysiwygEngine.resolveFont(name: name, size: TextSize.body.rawValue))
     }
 
     var body: some View {
         Button {
             isPresented.toggle()
         } label: {
-            HStack(spacing: 6) {
-                Text(selection)
-                    .font(previewFont(for: selection, size: selection == "SF Mono" ? 13 : 14))
-                    .foregroundColor(.primaryText)
-                Text(isPresented ? "▴" : "▾")
-                    .font(.system(size: 10.5))
-                    .foregroundColor(.faintText)
-            }
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+            PopUpLabel(title: selection, font: previewFont(for: selection), isActive: isPresented)
         }
         .buttonStyle(.plain)
         .fixedSize()
@@ -1029,7 +643,7 @@ struct FontPicker: View {
         VStack(spacing: 6) {
             TextField("Search fonts", text: $searchText)
                 .textFieldStyle(.plain)
-                .font(.notely(12.5))
+                .font(.notely(.caption))
                 .foregroundColor(.primaryText)
                 .padding(.horizontal, 9)
                 .frame(height: 28)
@@ -1040,7 +654,7 @@ struct FontPicker: View {
                     let installed = matching(installedFonts)
                     ForEach(pinned, id: \.self) { row($0) }
                     if !pinned.isEmpty && !installed.isEmpty {
-                        Rectangle().fill(Color.settingsRowLine).frame(height: 1)
+                        SettingsHairline()
                             .padding(.horizontal, 9).padding(.vertical, 5)
                     }
                     ForEach(installed, id: \.self) { row($0) }
@@ -1059,13 +673,13 @@ struct FontPicker: View {
         let isSelected = name == selection
         return HStack {
             Text(name)
-                .font(previewFont(for: name, size: name == "SF Mono" ? 13 : 14))
+                .font(previewFont(for: name))
                 .foregroundColor(.primaryText)
                 .lineLimit(1)
             Spacer()
             if isSelected {
                 Text("✓")
-                    .font(.notely(12))
+                    .font(.notely(.caption))
                     .foregroundColor(.accent)
             }
         }
@@ -1104,21 +718,21 @@ private struct LibrarySettings: View {
 
     var body: some View {
         SettingRow(title: folderName, detail: folderPath) {
-            HStack(spacing: 14) {
+            HStack(spacing: 8) {
                 if let url = store.workspaceURL {
-                    SettingsLink(title: "Show in Finder") {
+                    FillButton(title: "Show in Finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([url])
                     }
                 }
-                SettingsLink(title: "Change…", isPrimary: true) {
+                FillButton(title: "Change…") {
                     guard let url = NotesFolderPanel.choose() else { return }
                     store.openWorkspace(at: url)
                     appModel.openNote(nil)
                 }
             }
         }
-        SettingRow(title: "Open at login", detail: loginItemError, isLast: true) {
-            OnOffChoice(isOn: Binding(get: { openAtLogin }, set: setOpenAtLogin), label: "Open at login")
+        SettingRow(title: "Open at login", detail: loginItemError) {
+            SettingsSwitch(isOn: Binding(get: { openAtLogin }, set: setOpenAtLogin), label: "Open at login")
         }
     }
 
@@ -1138,11 +752,149 @@ private struct LibrarySettings: View {
     }
 }
 
+// MARK: - Publish
+
+/// The optional publishing tools, each off until switched on; its options
+/// fold out under it.
+private struct PublishSettings: View {
+    @AppStorage(AppSettings.wechatExtensionKey) private var wechat = false
+    @AppStorage(AppSettings.wechatThemeKey) private var theme = WeChatRenderer.Theme.blackRed.rawValue
+    @AppStorage(AppSettings.xhsExtensionKey) private var xhs = false
+
+    var body: some View {
+        SettingRow(title: "WeChat Article") {
+            SettingsSwitch(isOn: $wechat.animation(.easeOut(duration: 0.2)), label: "WeChat Article")
+        }
+        if wechat {
+            SettingRow(title: "Theme") {
+                PopUpChoice(options: WeChatRenderer.Theme.allCases.map { ($0.name, $0.rawValue) },
+                            selection: $theme, accessibilityLabel: "WeChat theme")
+            }
+            .padding(.leading, 16)
+            .transition(.opacity)
+        }
+        SettingRow(title: "Xiaohongshu Cards") {
+            SettingsSwitch(isOn: $xhs.animation(.easeOut(duration: 0.2)), label: "Xiaohongshu Cards")
+        }
+        if xhs {
+            XhsSettings()
+                .padding(.leading, 16)
+                .transition(.opacity)
+        }
+    }
+}
+
+/// Xiaohongshu Cards' defaults (board ㊾ ⑤). The preview may choose another
+/// template or size for one note; that stays with the note.
+private struct XhsSettings: View {
+    @AppStorage(AppSettings.xhsTemplateKey) private var template = XhsCards.Template.memo.rawValue
+    @AppStorage(AppSettings.xhsRatioKey) private var ratio = XhsCards.Ratio.portrait.rawValue
+    @AppStorage(AppSettings.xhsPageNumbersKey) private var pageNumbers = true
+    @AppStorage(AppSettings.xhsNameKey) private var name = ""
+    @AppStorage(AppSettings.xhsHandleKey) private var handle = ""
+    @AppStorage(AppSettings.xhsAvatarKey) private var avatar = ""
+    @AppStorage(AppSettings.xhsEndCardKey) private var endCard = false
+    @AppStorage(AppSettings.xhsEndLineKey) private var endLine = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingRow(title: "Template") {
+                PopUpChoice(options: XhsCards.Template.allCases.map { ($0.name, $0.rawValue) },
+                            selection: $template, accessibilityLabel: "Xiaohongshu template")
+            }
+            SettingRow(title: "Size") {
+                PopUpChoice(options: XhsCards.Ratio.allCases.map { ($0.rawValue, $0.rawValue) },
+                            selection: $ratio, accessibilityLabel: "Card size")
+            }
+            SettingRow(title: "Avatar") {
+                HStack(spacing: 8) {
+                    AvatarDot(path: avatar, name: name)
+                    if !avatar.isEmpty {
+                        FillButton(title: "Remove") { removeAvatar() }
+                    }
+                    FillButton(title: "Choose…") { chooseAvatar() }
+                }
+            }
+            SettingRow(title: "Name") {
+                SettingsTextField(placeholder: NSFullUserName(), text: $name)
+            }
+            SettingRow(title: "Handle") {
+                SettingsTextField(placeholder: "@name", text: $handle)
+            }
+            SettingRow(title: "Page numbers") {
+                SettingsSwitch(isOn: $pageNumbers, label: "Page numbers")
+            }
+            SettingRow(title: "End card") {
+                SettingsSwitch(isOn: $endCard.animation(.easeOut(duration: 0.2)), label: "End card")
+            }
+            if endCard {
+                SettingRow(title: "End card line") {
+                    SettingsTextField(placeholder: "One line to close with", text: $endLine, width: 220)
+                }
+                .padding(.leading, 16)
+                .transition(.opacity)
+            }
+        }
+    }
+
+    /// The picture is copied into Notely's own folder, so moving or
+    /// deleting the original doesn't take it off the cards.
+    private func chooseAvatar() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .heic, .webP, .tiff]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a picture for your avatar on Post cards."
+        guard panel.runModal() == .OK, let source = panel.url,
+              let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let folder = support.appendingPathComponent("Notely", isDirectory: true)
+        let target = folder.appendingPathComponent("xhs-avatar-\(Int(Date().timeIntervalSince1970)).\(source.pathExtension.lowercased())")
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: source, to: target)
+            removeAvatar()
+            avatar = target.path
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func removeAvatar() {
+        if !avatar.isEmpty { try? FileManager.default.removeItem(atPath: avatar) }
+        avatar = ""
+    }
+}
+
+/// The avatar as the Post template shows it: the picture, or the name's
+/// first letter on a quiet circle.
+private struct AvatarDot: View {
+    let path: String
+    let name: String
+
+    var body: some View {
+        Group {
+            if !path.isEmpty, let image = NSImage(contentsOfFile: path) {
+                Image(nsImage: image).resizable().scaledToFill()
+            } else {
+                Text(String((name.isEmpty ? NSFullUserName() : name).prefix(1)).uppercased())
+                    .font(.notely(.caption, weight: .semibold))
+                    .foregroundColor(Color(nsColor: .adaptive(light: 0x6B6457, dark: 0xC9C9C6)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(nsColor: .adaptive(light: 0xE4DFD4, dark: 0x34363B)))
+            }
+        }
+        .frame(width: 24, height: 24)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Shortcuts
 
-/// The app's real commands (see AppCommands), read-only. Keys are plain
-/// faint text, no keycaps.
-private struct ShortcutsSettings: View {
+/// The app's real commands (see AppCommands), read-only and folded away
+/// until asked for. Keys are plain faint text, no keycaps.
+private struct ShortcutsDisclosure: View {
+    @State private var isOpen = false
+
     private let groups: [(title: String, items: [(name: String, keys: String)])] = [
         ("Notes", [
             ("New Note", "⌘N"),
@@ -1168,42 +920,92 @@ private struct ShortcutsSettings: View {
             ("Insert Link", "⌘K"),
             ("Toggle To-do", "⌘L"),
         ]),
+        ("Publish", [
+            ("Show Preview", "⌃⌘P"),
+            ("Copy for WeChat / Add Cards to Photos", "⌥⌘C"),
+        ]),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(groups, id: \.title) { group in
-                HStack(alignment: .top, spacing: 16) {
-                    Text(group.title)
-                        .font(.system(size: 13, design: .serif).italic())
-                        .foregroundColor(.faintText)
-                        .frame(width: 80, alignment: .leading)
-                        .padding(.top, 7)
-                        .accessibilityAddTraits(.isHeader)
-                    VStack(spacing: 0) {
-                        ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { isOpen.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.tertiaryText)
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                    Text("Keyboard shortcuts")
+                        .font(.notely(.body, weight: .semibold))
+                        .foregroundColor(.primaryText)
+                }
+                .frame(height: 32)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(groups, id: \.title) { group in
+                        Text(group.title)
+                            .font(.notely(.caption))
+                            .foregroundColor(.faintText)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
+                        ForEach(Array(group.items.enumerated()), id: \.offset) { _, item in
                             HStack {
                                 Text(item.name)
-                                    .font(.notely(12.5))
+                                    .font(.notely(.body))
                                     .foregroundColor(.primaryText)
                                 Spacer()
                                 Text(item.keys)
-                                    .font(.notely(12.5))
-                                    .tracking(1.5)
+                                    .font(.notely(.body))
                                     .foregroundColor(.faintText)
                             }
-                            .frame(height: 30)
-                            .overlay(alignment: .bottom) {
-                                if index < group.items.count - 1 {
-                                    Rectangle().fill(Color.settingsRowLine).frame(height: 1)
-                                }
-                            }
+                            .frame(height: 28)
                             .accessibilityElement(children: .combine)
                         }
                     }
                 }
+                .padding(.leading, 16)
+                .transition(.opacity)
             }
         }
+    }
+}
+
+// MARK: - Memo editor buttons
+
+/// A small raised button (the memo editor's Cancel / Save).
+struct SettingsButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var isHovering = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.notely(.caption))
+                .foregroundColor(.primaryText)
+                .padding(.horizontal, 12)
+                .frame(height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(colorScheme == .dark ? Color.white.opacity(isHovering ? 0.16 : 0.12) : (isHovering ? Color.quietSurface : Color.white))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.12), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .onHover { isHovering = $0 }
     }
 }
 

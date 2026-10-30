@@ -79,7 +79,7 @@ final class ImageTextAttachment: NSTextAttachment, MarkdownBackedAttachment {
                     (trimmed as NSString).draw(
                         in: NSRect(x: 0, y: size.height + 7, width: size.width, height: Self.captionHeight - 7),
                         withAttributes: [
-                            .font: NSFont.systemFont(ofSize: 12.5),
+                            .font: NSFont.systemFont(ofSize: TextSize.caption.rawValue),
                             .foregroundColor: MarkdownPalette.tertiary,
                             .paragraphStyle: para,
                         ])

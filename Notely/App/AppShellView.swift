@@ -48,6 +48,7 @@ struct AppShellView: View {
     var body: some View {
         @Bindable var appModel = appModel
         let framed = appModel.frameRevealed
+        let flat = ThemeManager.shared.theme == .white
         let pageShape = RoundedRectangle(cornerRadius: framed ? Self.pageRadius : 0, style: .continuous)
         Group {
             if !store.isOpen {
@@ -88,8 +89,8 @@ struct AppShellView: View {
                                 .background {
                                     pageShape
                                         .fill(framed ? Color.pageSheet : Color.editorBg)
-                                        .shadow(color: .black.opacity(framed ? 0.05 : 0), radius: 1.5, y: 1)
-                                        .shadow(color: .black.opacity(framed ? 0.04 : 0), radius: 8, y: 4)
+                                        .shadow(color: .black.opacity(framed && !flat ? 0.05 : 0), radius: 1.5, y: 1)
+                                        .shadow(color: .black.opacity(framed && !flat ? 0.04 : 0), radius: 8, y: 4)
                                 }
                                 .overlay {
                                     pageShape

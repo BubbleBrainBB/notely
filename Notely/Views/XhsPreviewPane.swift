@@ -49,7 +49,7 @@ private struct PreviewSwitch: View {
                     withAnimation(.easeOut(duration: 0.18)) { choose(target) }
                 } label: {
                     Text(target == .wechat ? "WeChat" : "Xiaohongshu")
-                        .font(.notely(12, weight: isSelected ? .medium : .regular))
+                        .font(.notely(.caption, weight: isSelected ? .medium : .regular))
                         .foregroundColor(isSelected ? .primaryText : .secondaryText)
                         .padding(.horizontal, 11)
                         .frame(height: 22)
@@ -159,7 +159,7 @@ struct XhsPreviewPane: View {
                 rebuild()
             }
             .buttonStyle(.plain)
-            .font(.notely(12))
+            .font(.notely(.caption))
             .foregroundColor(.secondaryText)
             .help("Card size: 3:4 or 1:1")
             Button {
@@ -189,11 +189,11 @@ struct XhsPreviewPane: View {
                 set: { choices.title = $0 == deck.title ? nil : $0 }
             ))
             .textFieldStyle(.plain)
-            .font(.notely(12))
+            .font(.notely(.caption))
             .foregroundColor(.secondaryText)
             .help("The post's title. Changing it here doesn't change the note.")
             Text("\(count)")
-                .font(.notely(11.5).monospacedDigit())
+                .font(.notely(.caption).monospacedDigit())
                 .foregroundColor(.tertiaryText)
                 .help("Characters in the title")
             QuietLink(title: "Copy title") { XhsCards.copyText(title) }
@@ -223,7 +223,7 @@ struct XhsPreviewPane: View {
                     }
                 }
             }
-            .font(.notely(11.5))
+            .font(.notely(.caption))
             .foregroundColor(Color(nsColor: .adaptive(light: 0x7A5A12, dark: 0xE2C47A)))
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
@@ -238,9 +238,9 @@ struct XhsPreviewPane: View {
         let caption = XhsCards.caption(deck, choices)
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text("Caption").font(.notely(12, weight: .semibold)).foregroundColor(.primaryText)
+                Text("Caption").font(.notely(.caption, weight: .semibold)).foregroundColor(.primaryText)
                 Text("\(XhsCards.length(caption))")
-                    .font(.notely(11.5).monospacedDigit())
+                    .font(.notely(.caption).monospacedDigit())
                     .foregroundColor(.tertiaryText)
                     .help("Characters in the caption")
                 Spacer()
@@ -253,7 +253,7 @@ struct XhsPreviewPane: View {
                 get: { caption },
                 set: { choices.caption = $0 == deck.caption ? nil : $0 }
             ))
-            .font(.notely(12))
+            .font(.notely(.caption))
             .foregroundColor(.secondaryText)
             .scrollContentBackground(.hidden)
             .frame(height: 120)

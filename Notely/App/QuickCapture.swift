@@ -178,18 +178,18 @@ private struct CaptureView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            MemoTextEditor(text: $model.text, size: 16, placeholder: "Write it down…", focusRequest: model.focusRequest,
+            MemoTextEditor(text: $model.text, placeholder: "Write it down…", focusRequest: model.focusRequest,
                            onSubmit: { if !isEmpty { onSave(model.text) } }, onCancel: onCancel)
             HStack(spacing: 10) {
                 Text(model.message ?? "Memos · Today")
-                    .font(.notely(11.5))
+                    .font(.notely(.caption))
                     .foregroundColor(model.message == nil ? .faintText : .secondaryText)
                 Spacer(minLength: 0)
                 Button {
                     onSave(model.text)
                 } label: {
                     HStack(spacing: 8) {
-                        Text("Save").font(.notely(12)).foregroundColor(.secondaryText)
+                        Text("Save").font(.notely(.caption)).foregroundColor(.secondaryText)
                         Image(systemName: "arrow.up")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white)

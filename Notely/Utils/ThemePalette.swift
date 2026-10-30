@@ -1,14 +1,15 @@
 import Foundation
 
-/// The four color themes (design board ㊳). Each has a light and a dark
-/// palette; the appearance mode picks which one shows.
+/// The color themes (design board ㊳, plus White). Each has a light and a
+/// dark palette; the appearance mode picks which one shows.
 enum AppTheme: String, CaseIterable, Identifiable {
-    case paper, glass, linen, mist
+    case white, paper, glass, linen, mist
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .white: return "White"
         case .paper: return "Paper"
         case .glass: return "Glass"
         case .linen: return "Linen"
@@ -73,6 +74,8 @@ struct ThemePalette: Equatable {
 
     static func palette(_ theme: AppTheme, dark: Bool) -> ThemePalette {
         switch (theme, dark) {
+        case (.white, false): return .whiteLight
+        case (.white, true): return .whiteDark
         case (.paper, false): return .paperLight
         case (.paper, true): return .paperDark
         case (.glass, false): return .glassLight
@@ -83,6 +86,26 @@ struct ThemePalette: Equatable {
         case (.mist, true): return .mistDark
         }
     }
+
+    /// A white page on a near-white neutral ground (sidebar and toolbar),
+    /// told apart by the step in gray and the page's hairline edge, no
+    /// shadow. Neutral grays, as in Glass.
+    static let whiteLight = ThemePalette(
+        ground: 0xF6F6F7, groundSelected: 0xEAEAEC, page: 0xFFFFFF, card: 0xF5F5F7, sidebar: 0xF6F6F7,
+        selected: 0xEFEFF1, border: 0xEAEAEC, controlBorder: 0xE0E0E3,
+        text: 0x1D1D1F, text2: 0x3C3C43, text3: 0x6E6E73, faintText: 0x98989D, icon: 0x86868B, faintIcon: 0xAEAEB2,
+        strongInk: 0x000000,
+        marker: 0xC7C7CC, rule: 0xEAEAEC, codeBlock: 0xF5F5F7, inlineCode: 0xF0F0F2, linkUnderline: 0xD1D1D6,
+        tableBorder: 0xE5E5EA, highlight: 0xFBF3DB)
+
+    /// White's dark side: a graphite page on a deeper neutral ground.
+    static let whiteDark = ThemePalette(
+        ground: 0x161618, groundSelected: 0x2A2A2D, page: 0x1F1F21, card: 0x262628, sidebar: 0x161618,
+        selected: 0x2C2C2E, border: 0x2C2C2E, controlBorder: 0x38383A,
+        text: 0xF5F5F7, text2: 0xD1D1D6, text3: 0x98989F, faintText: 0x7C7C80, icon: 0x98989F, faintIcon: 0x636366,
+        strongInk: 0xFFFFFF,
+        marker: 0x545458, rule: 0x2E2E30, codeBlock: 0x242426, inlineCode: 0x2C2C2E, linkUnderline: 0x545458,
+        tableBorder: 0x38383A, highlight: 0x3F3820)
 
     /// 拾页 as it was: warm-gray ground, white page.
     static let paperLight = ThemePalette(

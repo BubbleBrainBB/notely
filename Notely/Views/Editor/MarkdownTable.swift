@@ -137,7 +137,7 @@ enum TableCellText {
         let result = NSMutableAttributedString(string: text, attributes: [
             .font: font, .foregroundColor: color, .paragraphStyle: paragraph,
         ])
-        let mono = NSFont.monospacedSystemFont(ofSize: (font.pointSize * 0.92).rounded(), weight: .regular)
+        let mono = NSFont.monospacedSystemFont(ofSize: WysiwygEngine.smallSize(font.pointSize), weight: .regular)
 
         // Code first: nothing inside it is Markdown.
         replace(code, in: result) { content in
@@ -238,7 +238,7 @@ final class TableAttachment: NSTextAttachment, MarkdownBackedAttachment {
     static func render(table: MarkdownTable, font baseFont: NSFont, maxWidth: CGFloat,
                        strongColor: NSColor = MarkdownPalette.strong) -> NSImage {
         let cols = max(1, table.columnCount)
-        let headerFont = NSFont.systemFont(ofSize: baseFont.pointSize - 0.5, weight: .semibold)
+        let headerFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .semibold)
         let numberFont = NSFont.monospacedDigitSystemFont(ofSize: baseFont.pointSize, weight: .regular)
         let border: CGFloat = 1
         let padH: CGFloat = 12

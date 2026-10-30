@@ -56,13 +56,16 @@ extension Color {
     static var quietSurface: Color { Color.primaryText.opacity(0.025) }
 }
 
-extension Font {
-    static func notely(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .default)
-    }
+enum TextSize: CGFloat {
+    case caption = 12
+    case body = 13
+    case emphasis = 15
+    case title = 20
+}
 
-    static func notelyMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+extension Font {
+    static func notely(_ size: TextSize, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        .system(size: size.rawValue, weight: weight, design: design)
     }
 }
 

@@ -74,7 +74,7 @@ struct SidebarView: View {
     /// The natural width of the widest note row (indent + file name + chrome),
     /// for double-click-to-fit on the divider.
     private func longestRowWidth() -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        let font = NSFont.systemFont(ofSize: TextSize.body.rawValue, weight: .semibold)
         let outer = Self.leadingInset + 8
         return store.notes.reduce(SidebarWidthPolicy.minimum) { widest, note in
             let depth = CGFloat(note.relativePath.split(separator: "/").count)
@@ -133,7 +133,7 @@ struct SidebarView: View {
             EmptyView()
         } else if root.totalCount == 0 {
             Text("No notes yet")
-                .font(.notely(12.5))
+                .font(.notely(.caption))
                 .foregroundColor(.tertiaryText)
                 .padding(.leading, NoteTreeIndent.base)
                 .frame(height: 28)
@@ -196,7 +196,7 @@ private struct LibraryHeader: View {
                         .foregroundColor(.iconMuted)
                         .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
                     Text(name)
-                        .font(.notely(13, weight: .medium))
+                        .font(.notely(.body, weight: .medium))
                         .foregroundColor(.primaryText)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -285,7 +285,7 @@ private struct SidebarSearchField: View {
                     .foregroundColor(.iconMuted)
                     .frame(width: 16)
                 Text("Search")
-                    .font(.notely(13))
+                    .font(.notely(.body))
                     .foregroundColor(.tertiaryText)
                 Spacer(minLength: 0)
             }
@@ -313,7 +313,7 @@ struct ShortcutHint: View {
 
     var body: some View {
         Text(text)
-            .font(.notely(11, weight: .medium))
+            .font(.notely(.caption, weight: .medium))
             .foregroundColor(.tertiaryText)
             .padding(.horizontal, boxed ? 5 : 0)
             .frame(height: 18)
@@ -335,7 +335,7 @@ struct SidebarSectionLabel: View {
 
     var body: some View {
         Text(title)
-            .font(.notely(11.5, weight: .semibold))
+            .font(.notely(.caption, weight: .semibold))
             .foregroundColor(.tertiaryText)
             .padding(.horizontal, 10)
             .padding(.top, 4)
@@ -383,7 +383,7 @@ struct SidebarRow: View {
                     .foregroundColor(isSelected || isEmphasized ? .primaryText : .iconMuted)
                     .frame(width: 16)
                 Text(title)
-                    .font(.notely(13, weight: isSelected || isEmphasized ? .semibold : .regular))
+                    .font(.notely(.body, weight: isSelected || isEmphasized ? .semibold : .regular))
                     .foregroundColor(isSelected || isEmphasized ? .primaryText : .secondaryText)
                 Spacer(minLength: 0)
             }
@@ -516,7 +516,7 @@ private struct FolderRow: View {
                             style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
                     .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
                 Text(folder.name)
-                    .font(.notely(13, weight: isExpanded ? .medium : .regular))
+                    .font(.notely(.body, weight: isExpanded ? .medium : .regular))
                     .foregroundColor(isExpanded || isHovering ? .primaryText : .secondaryText)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -571,7 +571,8 @@ private struct NoteRow: View {
 
     var body: some View {
         Button {
-            // ⌘-click opens it in a new tab (design board ㊴).
+            // A new tab, the open ones kept; only a blank draft is filled in
+            // place, and ⌘-click keeps that too (design board ㊴).
             appModel.openNote(note.id, inNewTab: NSEvent.modifierFlags.contains(.command))
         } label: {
             HStack(spacing: NoteTreeIndent.iconGap) {
@@ -579,7 +580,7 @@ private struct NoteRow: View {
                     .foregroundColor(isSelected ? .secondaryText : .faintIcon)
                     .frame(width: NoteTreeIndent.icon)
                 Text(displayTitle)
-                    .font(.notely(13, weight: isSelected ? .semibold : .regular))
+                    .font(.notely(.body, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? .primaryText : .secondaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -608,8 +609,6 @@ private struct NoteRow: View {
         // Dropped on a note: into the note's folder, as in Finder's list view.
         .treeDropTarget(note.relativePath)
         .contextMenu {
-            Button("Open in New Tab") { appModel.openNote(note.id, inNewTab: true) }
-            Divider()
             Button(note.pinned ? "Unpin" : "Pin") { store.togglePin(note.id) }
             Button("Rename…") {
                 renameText = note.filename
@@ -670,7 +669,7 @@ private struct FileRow: View {
                     .foregroundColor(isSelected ? .secondaryText : .faintIcon)
                     .frame(width: NoteTreeIndent.icon)
                 Text(file.name)
-                    .font(.notely(13, weight: isSelected ? .semibold : .regular))
+                    .font(.notely(.body, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? .primaryText : .tertiaryText)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -693,8 +692,6 @@ private struct FileRow: View {
         }
         .treeDropTarget(file.relativePath)
         .contextMenu {
-            Button("Open in New Tab") { appModel.openFile(file.id, inNewTab: true) }
-            Divider()
             Button("Copy Markdown Link") {
                 guard let library = store.workspaceURL else { return }
                 let path = AttachmentImport.relativePath(from: library, to: file.url)
@@ -816,7 +813,7 @@ private struct SidebarDragPreview<Icon: View>: View {
                 .foregroundColor(.secondaryText)
                 .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
             Text(title)
-                .font(.notely(13, weight: .medium))
+                .font(.notely(.body, weight: .medium))
                 .foregroundColor(.primaryText)
                 .lineLimit(1)
                 .truncationMode(.middle)

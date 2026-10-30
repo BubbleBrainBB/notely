@@ -94,7 +94,7 @@ struct SearchPopover: View {
                 .foregroundColor(.iconMuted)
             TextField("Search notes", text: $query)
                 .textFieldStyle(.plain)
-                .font(.notely(14))
+                .font(.notely(.emphasis))
                 .foregroundColor(.primaryText)
                 .focused($fieldFocused)
                 .onSubmit(openSelected)
@@ -230,7 +230,7 @@ private struct SearchResultRow: View {
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
                     highlight(hit.note.filename, ranges: hit.titleRanges)
-                        .font(.notely(13, weight: isSelected ? .semibold : .regular))
+                        .font(.notely(.body, weight: isSelected ? .semibold : .regular))
                         .foregroundColor(.primaryText)
                         .lineLimit(1)
                     secondLine
@@ -288,7 +288,7 @@ private struct SearchResultRow: View {
                     .foregroundColor(.tertiaryText)
             }
         }
-        .font(.notely(11.5))
+        .font(.notely(.caption))
         .truncationMode(.tail)
     }
 }
@@ -306,10 +306,10 @@ private struct SearchEmptyState: View {
                 .frame(width: 44, height: 44)
                 .background(Circle().fill(Color.quietSurface))
             Text("No results for “\(query)”")
-                .font(.notely(13, weight: .medium))
+                .font(.notely(.body, weight: .medium))
                 .foregroundColor(.secondaryText)
             Text("Try different keywords, or search tags with a # prefix.")
-                .font(.notely(11.5))
+                .font(.notely(.caption))
                 .foregroundColor(.tertiaryText)
         }
         .frame(maxWidth: .infinity)
@@ -327,7 +327,7 @@ private struct LabeledKey: View {
         HStack(spacing: 5) {
             ShortcutHint(text: key)
             Text(label)
-                .font(.notely(11))
+                .font(.notely(.caption))
                 .foregroundColor(.tertiaryText)
         }
     }

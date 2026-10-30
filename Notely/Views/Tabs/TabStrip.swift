@@ -43,7 +43,7 @@ struct NoteTitleHeader: ToolbarContent {
                         }
                         if !subtitle.isEmpty {
                             Text(subtitle)
-                                .font(.notely(11))
+                                .font(.notely(.caption))
                                 .foregroundColor(.faintText)
                                 .lineLimit(1)
                         }
@@ -59,9 +59,9 @@ struct NoteTitleHeader: ToolbarContent {
         }
     }
 
-    /// `title` in the body family at 13.5pt medium.
+    /// `title` in the body family at body size, medium.
     static func styledTitle(_ title: String, fontName: String) -> AttributedString {
-        BodyFace.text(title, fontName: fontName, size: 13.5, weight: .medium)
+        BodyFace.text(title, fontName: fontName, size: TextSize.body.rawValue, weight: .medium)
     }
 }
 
@@ -342,7 +342,7 @@ private struct PaperTab: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 9)
         } else {
-            Text(BodyFace.text(title, fontName: editorFontName, size: 13, weight: .medium))
+            Text(BodyFace.text(title, fontName: editorFontName, size: TextSize.body.rawValue, weight: .medium))
                 .italic(tab.content == .draft)
                 .foregroundColor(titleColor)
                 .lineLimit(1)
@@ -387,7 +387,7 @@ private struct PaperTab: View {
                 // as a tab: the page's own hairline, carried up around it, and
                 // a little lift.
                 .overlay {
-                    if ThemeManager.shared.isGlass {
+                    if ThemeManager.shared.pageMatchesGround {
                         PaperTabShape(flare: PaperTabShape.flare, closed: false)
                             .stroke(Color.pageEdge, lineWidth: 1)
                     }

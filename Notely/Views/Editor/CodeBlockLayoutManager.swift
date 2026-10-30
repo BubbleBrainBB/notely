@@ -199,7 +199,7 @@ final class CodeBlockLayoutManager: NSLayoutManager {
             guard let language = self.textStorage?.attribute(.codeBlockLanguage, at: range.location, effectiveRange: nil) as? String,
                   !language.isEmpty else { return }
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11),
+                .font: NSFont.systemFont(ofSize: TextSize.caption.rawValue),
                 .foregroundColor: MarkdownPalette.tertiary,
             ]
             let size = (language as NSString).size(withAttributes: attrs)
@@ -208,7 +208,8 @@ final class CodeBlockLayoutManager: NSLayoutManager {
     }
 
     private func drawCalloutIcons(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
-        enumerate(.calloutIcon, in: glyphsToShow) { value, _, gRange in
+        guard let storage = textStorage else { return }
+        enumerate(.calloutIcon, in: glyphsToShow) { value, range, gRange in
             guard let raw = value as? String else { return }
             let kind = CalloutKind(raw)
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
@@ -216,8 +217,14 @@ final class CodeBlockLayoutManager: NSLayoutManager {
             guard let image = NSImage(systemSymbolName: kind.symbolName, accessibilityDescription: nil)?
                 .withSymbolConfiguration(config) else { return }
             // The tagged character is the collapsed `:::`, so center on the
-            // title font's cap height rather than that character's font.
-            let font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+            // title font's cap height rather than that character's font: the
+            // line's last character is always title text.
+            let text = storage.string as NSString
+            let line = text.paragraphRange(for: range)
+            var last = NSMaxRange(line) - 1
+            if last > line.location, text.character(at: last) == 0x0A { last -= 1 }
+            let font = storage.attribute(.font, at: last, effectiveRange: nil) as? NSFont
+                ?? NSFont.systemFont(ofSize: 14, weight: .semibold)
             let baseline = self.baselineY(forGlyphAt: gRange.location, origin: origin)
             let centerY = baseline - font.capHeight / 2
             let size = image.size

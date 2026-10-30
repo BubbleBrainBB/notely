@@ -29,7 +29,7 @@ struct MemosView: View {
     /// Re-read so a font change in Settings restyles the page.
     private var textFont: Font {
         _ = editorFont
-        return Font(MemoTypography.font(size: 15))
+        return Font(MemoTypography.font(size: TextSize.emphasis.rawValue))
     }
 
     var body: some View {
@@ -93,7 +93,7 @@ struct MemosView: View {
 
             if memos.isEmpty {
                 Text("Memos are saved in the Memos folder, one file per day.")
-                    .font(.notely(12))
+                    .font(.notely(.caption))
                     .foregroundColor(.faintText)
                     .padding(.top, 28)
             }
@@ -164,7 +164,7 @@ struct MemoComposer: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            MemoTextEditor(text: $draft, size: 16, placeholder: placeholder, minHeight: 26,
+            MemoTextEditor(text: $draft, placeholder: placeholder, minHeight: 26,
                            focusRequest: focusRequest, onSubmit: submit)
                 .padding(.bottom, 12)
                 .overlay(alignment: .bottom) {
@@ -203,7 +203,7 @@ private struct QuietTextButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.notely(11.5))
+                .font(.notely(.caption))
                 .foregroundColor(isHovering ? .secondaryText : .faintText)
                 .contentShape(Rectangle())
         }
@@ -227,7 +227,7 @@ private struct MemoSaveButtonStyle: ButtonStyle {
         var body: some View {
             let wash = !isEnabled ? 0 : configuration.isPressed ? 0.16 : isHovering ? 0.10 : 0
             configuration.label
-                .font(.notely(12))
+                .font(.notely(.caption))
                 .foregroundColor(isEnabled ? .accent : .faintText)
                 .padding(.horizontal, 10)
                 .frame(height: 24)
@@ -272,7 +272,7 @@ private struct MemoMargin: View {
                     .padding(.top, 18)
                     .padding(.bottom, 14)
                 Text("Tags")
-                    .font(.system(size: 13, design: .serif).italic())
+                    .font(.notely(.body, design: .serif).italic())
                     .foregroundColor(.faintText)
                     .padding(.bottom, 8)
                 VStack(alignment: .leading, spacing: 7) {
@@ -298,14 +298,14 @@ private struct TagLine: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Text("#" + name)
-                    .font(.notely(12.5, weight: isSelected ? .semibold : .regular))
+                    .font(.notely(.caption, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(Color.accent.opacity(isHovering && !isSelected ? 0.75 : 1))
                     .underline(isSelected, color: .accent)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
                 Text("\(count)")
-                    .font(.notely(12))
+                    .font(.notely(.caption))
                     .monospacedDigit()
                     .foregroundColor(.faintIcon)
             }
@@ -350,10 +350,10 @@ struct MemoMonthCalendar: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 (Text(month.formatted(.dateTime.month(.wide)))
-                    .font(.system(size: 15, weight: .semibold, design: .serif))
+                    .font(.notely(.emphasis, weight: .semibold, design: .serif))
                     .foregroundColor(.primaryText)
                  + Text(" " + month.formatted(.dateTime.year()))
-                    .font(.system(size: 15, design: .serif))
+                    .font(.notely(.emphasis, design: .serif))
                     .foregroundColor(.faintText))
                 Spacer(minLength: 0)
                 HStack(spacing: 2) {
@@ -366,7 +366,7 @@ struct MemoMonthCalendar: View {
             HStack(spacing: 0) {
                 ForEach(Self.weekdays.indices, id: \.self) { index in
                     Text(Self.weekdays[index])
-                        .font(.notely(10))
+                        .font(.notely(.caption))
                         .foregroundColor(.faintText)
                         .frame(width: Self.cell)
                 }
@@ -388,7 +388,7 @@ struct MemoMonthCalendar: View {
 
             Text(monthCount == 0 ? "Nothing yet this month"
                  : "\(monthCount) memo\(monthCount == 1 ? "" : "s") · \(activeDays) day\(activeDays == 1 ? "" : "s")")
-                .font(.notely(11.5))
+                .font(.notely(.caption))
                 .foregroundColor(.faintText)
                 .padding(.top, 10)
         }
@@ -409,7 +409,7 @@ struct MemoMonthCalendar: View {
             cardDay = nil
         } label: {
             Text("\(Calendar.current.component(.day, from: date))")
-                .font(.notely(12, weight: isSelected || isToday ? .semibold : (count > 0 ? .medium : .regular)))
+                .font(.notely(.caption, weight: isSelected || isToday ? .semibold : (count > 0 ? .medium : .regular)))
                 .monospacedDigit()
                 .foregroundColor(numberColor)
                 .frame(width: 24, height: 24)
@@ -501,12 +501,12 @@ private struct MemoDayCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(MemosView.longDayLabel(day))
-                    .font(.system(size: 14, weight: .semibold, design: .serif))
+                    .font(.notely(.body, weight: .semibold, design: .serif))
                     .foregroundColor(.primaryText)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 Text("\(memos.count) memo\(memos.count == 1 ? "" : "s")")
-                    .font(.notely(11))
+                    .font(.notely(.caption))
                     .foregroundColor(.faintText)
                     .fixedSize()
             }
@@ -514,12 +514,12 @@ private struct MemoDayCard: View {
                 ForEach(memos.prefix(Self.shown)) { memo in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(memo.time)
-                            .font(Font(MemoTypography.italic(size: 12)))
+                            .font(Font(MemoTypography.italic(size: TextSize.caption.rawValue)))
                             .monospacedDigit()
                             .foregroundColor(.faintText)
                             .frame(width: 36, alignment: .leading)
                         Text(Self.firstLine(of: memo.text))
-                            .font(Font(MemoTypography.font(size: 12.5)))
+                            .font(Font(MemoTypography.font(size: TextSize.caption.rawValue)))
                             .foregroundColor(.primaryText)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -527,7 +527,7 @@ private struct MemoDayCard: View {
                 }
                 if memos.count > Self.shown {
                     Text("\(memos.count - Self.shown) more")
-                        .font(.notely(11))
+                        .font(.notely(.caption))
                         .foregroundColor(.faintText)
                         .padding(.leading, 46)
                 }
@@ -584,10 +584,10 @@ private struct MemoDayGroup<Content: View>: View {
         HStack(alignment: .top, spacing: 20) {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(date.map { String(Calendar.current.component(.day, from: $0)) } ?? day)
-                    .font(Font(MemoTypography.font(size: 26)))
+                    .font(Font(MemoTypography.font(size: TextSize.title.rawValue)))
                     .foregroundColor(.primaryText)
                 Text(subtitle)
-                    .font(Font(MemoTypography.italic(size: 11.5)))
+                    .font(Font(MemoTypography.italic(size: TextSize.caption.rawValue)))
                     .foregroundColor(.faintText)
                     .fixedSize()
             }
@@ -616,7 +616,7 @@ private struct FilterLabel: View {
         Button(action: onClear) {
             HStack(spacing: 6) {
                 Text(label)
-                    .font(.notely(12.5))
+                    .font(.notely(.caption))
                     .foregroundColor(isHovering ? .primaryText : .secondaryText)
                 Image(systemName: "xmark")
                     .font(.system(size: 8.5, weight: .semibold))
@@ -667,7 +667,7 @@ private struct MemoRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(memo.time)
-                    .font(Font(MemoTypography.italic(size: 12)))
+                    .font(Font(MemoTypography.italic(size: TextSize.caption.rawValue)))
                     .monospacedDigit()
                     .foregroundColor(.faintText)
                 Spacer(minLength: 0)
@@ -785,7 +785,7 @@ private struct MemoBody: View {
     /// A to-do's line in the memo was clicked.
     let onToggle: (Int) -> Void
 
-    private static let size: CGFloat = 15
+    private static let size = TextSize.emphasis.rawValue
     private static let slot: CGFloat = 22
 
     var body: some View {
@@ -833,7 +833,7 @@ private struct MemoBody: View {
                 }
         case .code(_, let text):
             Text(text)
-                .font(.system(size: 12.5, design: .monospaced))
+                .font(.notely(.caption, design: .monospaced))
                 .foregroundColor(.primaryText)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)

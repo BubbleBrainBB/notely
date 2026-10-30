@@ -201,9 +201,9 @@ final class AppModel {
         AppSettings.sortMode = mode.rawValue
     }
 
-    /// Opens a note: in the tab that already shows it, else in the active
-    /// tab — or a new one, with `inNewTab` (⌘-click) or when the active tab
-    /// is pinned. `nil` turns the active tab into a blank draft.
+    /// Opens a note: in the tab that already shows it, else in a new tab —
+    /// the open pages stay. Only a blank draft is filled in place, unless
+    /// `inNewTab` keeps it. `nil` turns the active tab into a blank draft.
     func openNote(_ id: String?, inNewTab: Bool = false) {
         guard let id else {
             dismissOverlays()
@@ -225,10 +225,10 @@ final class AppModel {
         dismissOverlays()
         if let existing = tabs.first(where: { $0.content == content }) {
             activeTabId = existing.id
-        } else if inNewTab || activeTab.isPinned {
-            insertTab(NoteTab(content: content))
-        } else {
+        } else if activeContent == .draft && !inNewTab && !activeTab.isPinned {
             activeContent = content
+        } else {
+            insertTab(NoteTab(content: content))
         }
     }
 

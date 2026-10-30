@@ -93,6 +93,17 @@ final class WysiwygEngine {
     static let codeTextIndent: CGFloat = 16
     static let listIndentStep: CGFloat = ListMarker.slotWidth
 
+    /// Sizes in a note as multiples of the body size (Settings › Writing ›
+    /// Size), so the title and headings stay above the body at any size:
+    /// 30 / 26 / 21 / 18 at the default 16. Code, tags, callout titles and
+    /// other small runs take one step under the body, never under 12.
+    static let titleScale: CGFloat = 1.875
+    static let headingScales: [CGFloat] = [1.625, 1.3125, 1.125]
+
+    static func smallSize(_ body: CGFloat) -> CGFloat {
+        max(TextSize.caption.rawValue, (body * 0.875).rounded())
+    }
+
     init(style: MarkdownStyle) {
         self.style = style
         self.inlineRules = WysiwygEngine.buildInlineRules(style: style)
@@ -170,7 +181,9 @@ final class WysiwygEngine {
             ]
         }
 
-        let mono = NSFont.monospacedSystemFont(ofSize: (fontSize * 0.85).rounded(), weight: .regular)
+        func scaled(_ ratio: CGFloat) -> CGFloat { (fontSize * ratio).rounded() }
+        let small = smallSize(fontSize)
+        let mono = NSFont.monospacedSystemFont(ofSize: small, weight: .regular)
 
         return MarkdownStyle(
             fontSize: fontSize,
@@ -184,11 +197,11 @@ final class WysiwygEngine {
             ],
             // PingFang's Bold reads heavy in Chinese headings: Semibold, a
             // touch smaller, sitting closer to its paragraph (board ⑲ ④).
-            title: heading(size: 30, weight: .semibold, before: 0, after: 10),
+            title: heading(size: scaled(titleScale), weight: .semibold, before: 0, after: 10),
             headings: [
-                heading(size: 26, weight: .semibold, before: 24, after: 8),
-                heading(size: 21, weight: .semibold, before: 16, after: 8),
-                heading(size: 18, weight: .semibold, before: 12, after: 4),
+                heading(size: scaled(headingScales[0]), weight: .semibold, before: 24, after: 8),
+                heading(size: scaled(headingScales[1]), weight: .semibold, before: 16, after: 8),
+                heading(size: scaled(headingScales[2]), weight: .semibold, before: 12, after: 4),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2),
                 heading(size: fontSize, weight: .semibold, before: 8, after: 2, color: MarkdownPalette.tertiary),
@@ -214,11 +227,11 @@ final class WysiwygEngine {
             // .backgroundColor would also paint the line spacing below.
             highlight: [.textHighlight: MarkdownPalette.highlight],
             hashtag: [
-                .font: resolveFont(name: fontName, size: (fontSize * 0.85).rounded()),
+                .font: resolveFont(name: fontName, size: small),
                 .foregroundColor: MarkdownPalette.secondary,
             ],
             codeBlock: [
-                .font: NSFont.monospacedSystemFont(ofSize: (fontSize * 0.84).rounded(.down) + 0.5, weight: .regular),
+                .font: mono,
                 .foregroundColor: ink,
                 // The block background is drawn as one rounded box by
                 // CodeBlockLayoutManager (see the .codeBlockBackground marker
@@ -226,10 +239,10 @@ final class WysiwygEngine {
                 // a ragged per-line fill.
                 .paragraphStyle: paragraph(indent: codeTextIndent, tail: -codeTextIndent, lineSpacing: 6),
             ],
-            calloutTitleFont: NSFont.systemFont(ofSize: 14, weight: .semibold),
-            calloutBodyFont: resolveFont(name: fontName, size: fontSize - 1),
-            quoteAttributionFont: resolveFont(name: fontName, size: 12.5),
-            rawSourceFont: NSFont.monospacedSystemFont(ofSize: max(11, fontSize - 3), weight: .regular)
+            calloutTitleFont: NSFont.systemFont(ofSize: small, weight: .semibold),
+            calloutBodyFont: bodyFont,
+            quoteAttributionFont: resolveFont(name: fontName, size: small),
+            rawSourceFont: mono
         )
     }
 
@@ -1084,7 +1097,7 @@ final class WysiwygEngine {
 
         let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 17)
         let color = MarkdownPalette.primary
-        let mono = NSFont.monospacedSystemFont(ofSize: max(11, bodyFont.pointSize - 1), weight: .regular)
+        let mono = style.rawSourceFont
 
         for (index, span) in spans.enumerated().reversed() {
             guard NSMaxRange(span.range) <= storage.length else { continue }
@@ -1125,8 +1138,8 @@ final class WysiwygEngine {
         guard !tables.isEmpty else { return }
 
         let bodyFont = (style.baseParagraph[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 16)
-        let cellFont = NSFont.systemFont(ofSize: (bodyFont.pointSize * 0.875).rounded())
-        let mono = NSFont.monospacedSystemFont(ofSize: max(11, bodyFont.pointSize - 1), weight: .regular)
+        let cellFont = NSFont.systemFont(ofSize: Self.smallSize(bodyFont.pointSize))
+        let mono = style.rawSourceFont
 
         for (index, item) in tables.enumerated().reversed() {
             guard NSMaxRange(item.range) <= storage.length else { continue }

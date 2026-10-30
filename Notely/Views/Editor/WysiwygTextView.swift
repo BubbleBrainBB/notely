@@ -722,7 +722,8 @@ final class WysiwygTextView: NSTextView {
         let origin = textContainerOrigin
         let faint = NSColor.themed(\.faintIcon)
 
-        let titleFont = WysiwygEngine.resolveFont(name: fontName, size: 30, weight: .semibold)
+        let titleFont = WysiwygEngine.resolveFont(name: fontName, size: (fontSize * WysiwygEngine.titleScale).rounded(),
+                                                  weight: .semibold)
         let title = NSAttributedString(string: placeholder.title,
                                        attributes: [.font: titleFont, .foregroundColor: faint])
         let titleY = origin.y + line.minY + max(0, (line.height - titleFont.ascender + titleFont.descender) / 2)
@@ -1159,6 +1160,12 @@ final class WysiwygTextView: NSTextView {
             after = NSRange(location: next, length: 0)
             setSelectedRange(after)
         }
+        // Up into the properties panel: open it for editing rather than
+        // leaving the caret at the panel's foot.
+        if after.location == 0, after != before, let panel = frontmatterPanel() {
+            openFrontmatter(panel)
+            return
+        }
         if after != before {
             restyleCaretLines(from: before.location)
         }
@@ -1171,6 +1178,7 @@ final class WysiwygTextView: NSTextView {
         if toggleTaskIfCheckboxClicked(event) { return }
         if playVideoIfClicked(event) { return }
         if revealImageSourceIfClicked(event) { return }
+        if revealFrontmatterIfClicked(event) { return }
         let before = selectedRange()
         super.mouseDown(with: event)
         // A simple click (no drag-selection): re-render so the table the caret
@@ -1179,7 +1187,11 @@ final class WysiwygTextView: NSTextView {
         // clobbered. The caret survives the storage rebuild via the raw↔display
         // remap in restyle().
         if selectedRange().length == 0 {
-            restyleCaretLines(from: before.location)
+            if selectedRange().location == 0, let panel = frontmatterPanel() {
+                openFrontmatter(panel)
+            } else {
+                restyleCaretLines(from: before.location)
+            }
         }
     }
 
@@ -1272,6 +1284,48 @@ final class WysiwygTextView: NSTextView {
         setSelectedRange(NSRange(location: caret, length: 0))
         restyle()
         return true
+    }
+
+    /// The properties panel, when the note starts with one (collapsed).
+    private func frontmatterPanel() -> FrontmatterAttachment? {
+        guard let storage = textStorage, storage.length > 0 else { return nil }
+        return storage.attribute(.attachment, at: 0, effectiveRange: nil) as? FrontmatterAttachment
+    }
+
+    /// A click on the properties panel opens the frontmatter as its source,
+    /// as in Obsidian's live preview, instead of leaving the caret before
+    /// the panel — where it drew at the panel's foot and opened nothing.
+    private func revealFrontmatterIfClicked(_ event: NSEvent) -> Bool {
+        guard event.clickCount == 1, !event.modifierFlags.contains(.shift),
+              let layoutManager, let textContainer, let panel = frontmatterPanel() else { return false }
+        let glyph = layoutManager.glyphIndexForCharacter(at: 0)
+        let rect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        guard rect.contains(convert(event.locationInWindow, from: nil)) else { return false }
+        openFrontmatter(panel)
+        return true
+    }
+
+    /// Shows the frontmatter as source with the caret at the end of its last
+    /// property, ready to edit. The caret goes after the panel first — the
+    /// source's end, which opens it — then, the source now standing as itself
+    /// at the top, back to the line before the closing `---`.
+    /// The page stays where it was: restyle keeps the caret's line still,
+    /// and the caret jumps from the panel's foot to the source's last line,
+    /// which scrolled the page — but the panel is the top of the note.
+    private func openFrontmatter(_ panel: FrontmatterAttachment) {
+        let clipView = enclosingScrollView?.contentView
+        let origin = clipView?.bounds.origin
+        setSelectedRange(NSRange(location: 1, length: 0))
+        restyle()
+        let source = panel.markdownSource as NSString
+        let closing = source.range(of: "\n", options: .backwards)
+        let caret = closing.location == NSNotFound ? source.length : closing.location
+        setSelectedRange(NSRange(location: min(caret, textStorage?.length ?? 0), length: 0))
+        if let clipView, let origin, clipView.bounds.origin != origin {
+            clipView.setBoundsOrigin(clipView.constrainBoundsRect(NSRect(origin: origin, size: clipView.bounds.size)).origin)
+            enclosingScrollView?.reflectScrolledClipView(clipView)
+        }
     }
 
     /// The poster area of the video card at `charIndex`, in view coordinates.

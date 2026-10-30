@@ -28,7 +28,7 @@ struct WeChatPreviewPane: View {
             }
             if let notice = failure ?? article?.warnings.first.map(WeChatCopy.english) {
                 Text(notice)
-                    .font(.notely(11.5))
+                    .font(.notely(.caption))
                     .foregroundColor(Color(nsColor: .adaptive(light: 0x7A5A12, dark: 0xE2C47A)))
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -65,7 +65,7 @@ struct WeChatPreviewPane: View {
     private func titleRow(_ title: String) -> some View {
         HStack(spacing: 10) {
             Text(title)
-                .font(.notely(12))
+                .font(.notely(.caption))
                 .foregroundColor(.secondaryText)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -204,7 +204,7 @@ struct ThemeWord: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.notely(12))
+                .font(.notely(.caption))
                 .foregroundColor(isSelected ? .primaryText : (isHovering ? .secondaryText : .faintText))
                 .overlay(alignment: .bottom) {
                     Rectangle().fill(Color.accent).frame(height: 1.5).offset(y: 4).opacity(isSelected ? 1 : 0)
@@ -227,7 +227,7 @@ struct QuietLink: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.notely(11.5))
+                .font(.notely(.caption))
                 .foregroundColor(isHovering ? .primaryText : .tertiaryText)
                 .contentShape(Rectangle())
         }
@@ -242,7 +242,7 @@ struct CopyButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.notely(12, weight: .medium))
+            .font(.notely(.caption, weight: .medium))
             .foregroundColor(.white)
             .padding(.horizontal, 12)
             .frame(height: 24)

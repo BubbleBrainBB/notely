@@ -1,16 +1,13 @@
 import SwiftUI
 
-/// No folder open (design boards ㉕, ㉞): the name, one line, and two
-/// choices — a new notebook in Documents, or a folder the user already has —
-/// plus the folders opened before. When the last session's folder can't be
-/// found, it says so instead and offers to find it. The name is a
-/// placeholder until the product is named.
+/// No folder open (artifacts/welcome-redesign): the app icon, the name, one
+/// line, and Open Folder… — plus the folders opened before. When the last
+/// session's folder can't be found, it says so instead and offers to find
+/// it. The name is a placeholder until the product is named.
 struct FolderOpenView: View {
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
     @State private var appeared = false
-    @State private var isHoveringNew = false
-    @State private var isHoveringOpen = false
     @State private var errorMessage: String?
 
     static let productName = "Notely"
@@ -28,7 +25,7 @@ struct FolderOpenView: View {
             }
         }
         .opacity(appeared ? 1 : 0)
-        .animation(.easeOut(duration: 0.6), value: appeared)
+        .animation(.easeOut(duration: 0.2), value: appeared)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.editorBg)
         .ignoresSafeArea()
@@ -39,73 +36,54 @@ struct FolderOpenView: View {
         .onAppear { appeared = true }
     }
 
+    /// The brand set tight (16 / 4), the action a step below (28), recents a
+    /// larger step below that (40); the group sits a little above center.
     private var welcome: some View {
         VStack(spacing: 0) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 64, height: 64)
+                .accessibilityHidden(true)
             Text(Self.productName)
-                .font(.custom("Didot-Italic", size: 76))
-                .tracking(-0.5)
+                .font(.notely(.title, weight: .semibold))
                 .foregroundColor(.primaryText)
+                .padding(.top, 16)
             Text("Your notes, as plain files.")
-                .font(Font(WysiwygEngine.resolveFont(name: "New York", size: 15)))
+                .font(.notely(.body))
                 .foregroundColor(.tertiaryText)
-                .padding(.top, 18)
+                .padding(.top, 4)
 
-            HStack(alignment: .top, spacing: 28) {
-                VStack(spacing: 6) {
-                    Button(action: startNewNotebook) {
-                        HStack(spacing: 6) {
-                            Text("New Notebook")
-                                .font(.notely(13, weight: .medium))
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 11, weight: .medium))
-                                .offset(x: isHoveringNew ? 2 : 0)
-                        }
-                        .foregroundColor(.primaryText)
-                        .padding(.bottom, 3)
-                        .overlay(alignment: .bottom) {
-                            Rectangle().fill(Color.primaryText).frame(height: 1)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.defaultAction)
-                    .onHover { isHoveringNew = $0 }
-                    .animation(.easeOut(duration: 0.15), value: isHoveringNew)
-                    Text("in Documents")
-                        .font(.notely(11))
-                        .foregroundColor(.faintText)
-                }
-
-                Button(action: openExistingFolder) {
+            Button(action: openExistingFolder) {
+                HStack(spacing: 6) {
+                    FolderIcon()
                     Text("Open Folder…")
-                        .font(.notely(13))
-                        .foregroundColor(isHoveringOpen ? .primaryText : .tertiaryText)
-                        .padding(.bottom, 4)
-                        .contentShape(Rectangle())
+                        .font(.notely(.body, weight: .medium))
+                        .foregroundColor(.primaryText)
+                    KeyCaps(keys: ["⌘", "O"])
+                        .padding(.leading, 6)
                 }
-                .buttonStyle(.plain)
-                .onHover { isHoveringOpen = $0 }
+                .padding(.horizontal, 10)
+                .frame(height: 28)
             }
-            .padding(.top, 64)
-            .opacity(appeared ? 1 : 0)
-            .animation(.easeOut(duration: 0.6).delay(0.3), value: appeared)
+            .buttonStyle(HoverFillButtonStyle())
+            .keyboardShortcut(.defaultAction)
+            .padding(.top, 28)
 
             // Folders opened before; never shown on a first launch.
             let recents = RecentFolder.existing()
             if !recents.isEmpty {
                 RecentFolderList(folders: recents, open: open)
-                    .padding(.top, 48)
-                    .opacity(appeared ? 1 : 0)
-                    .animation(.easeOut(duration: 0.6).delay(0.45), value: appeared)
+                    .padding(.top, 40)
             }
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.notely(11.5))
+                    .font(.notely(.caption))
                     .foregroundColor(.tertiaryText)
                     .padding(.top, 20)
             }
         }
+        .padding(.bottom, 48)
     }
 
     /// Opens a library from this page, handing over to the main window with
@@ -195,43 +173,86 @@ struct RecentFolder: Identifiable {
 private struct RecentFolderList: View {
     let folders: [RecentFolder]
     let open: (URL) -> Void
-    @State private var hoveredId: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Recent")
-                .font(.notely(11, weight: .semibold))
-                .tracking(0.6)
+                .font(.notely(.caption, weight: .semibold))
                 .foregroundColor(.faintText)
                 .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .padding(.bottom, 4)
             ForEach(folders) { folder in
                 Button { open(folder.url) } label: {
-                    HStack(spacing: 9) {
-                        ShiyeIcon(.library, size: 15)
-                            .foregroundColor(.iconMuted)
-                        Text(BodyFace.text(folder.name, fontName: "New York", size: 14))
+                    HStack(spacing: 10) {
+                        FolderIcon()
+                        Text(folder.name)
+                            .font(.notely(.body))
                             .foregroundColor(.primaryText)
                             .lineLimit(1)
                         Spacer(minLength: 12)
                         Text(folder.location)
-                            .font(.notely(11.5))
+                            .font(.notely(.caption))
                             .foregroundColor(.faintText)
                             .lineLimit(1)
                     }
                     .padding(.horizontal, 10)
-                    .frame(height: 34)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(hoveredId == folder.id ? Color.cardHover : Color.clear)
-                    )
-                    .contentShape(Rectangle())
+                    .frame(height: 30)
                 }
-                .buttonStyle(.plain)
-                .onHover { hoveredId = $0 ? folder.id : (hoveredId == folder.id ? nil : hoveredId) }
+                .buttonStyle(HoverFillButtonStyle())
             }
         }
-        .frame(width: 360)
+        .frame(width: 320)
+    }
+}
+
+/// The sidebar's folder, in its quiet gray.
+private struct FolderIcon: View {
+    var body: some View {
+        FolderGlyph(open: false)
+            .stroke(Color.iconMuted, style: StrokeStyle(lineWidth: 1.15, lineJoin: .round))
+            .frame(width: 16, height: 16)
+    }
+}
+
+/// A shortcut as light key caps: a fill, no outline.
+private struct KeyCaps: View {
+    let keys: [String]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(keys, id: \.self) { key in
+                Text(key)
+                    .font(.notely(.caption))
+                    .foregroundColor(.tertiaryText)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 18, minHeight: 18)
+                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.inlineFill))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// No fill until the pointer is over it, a deeper one while pressed.
+private struct HoverFillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Fill(configuration: configuration)
+    }
+
+    private struct Fill: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var isHovering = false
+
+        var body: some View {
+            configuration.label
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.primaryText.opacity(configuration.isPressed ? 0.09 : isHovering ? 0.05 : 0))
+                )
+                .contentShape(Rectangle())
+                .onHover { isHovering = $0 }
+                .animation(.easeOut(duration: 0.12), value: isHovering)
+        }
     }
 }
 
@@ -286,15 +307,15 @@ private struct MissingFolderPanel: View {
             Text(BodyFace.text(volume == nil
                                 ? "Can’t find “\(url.lastPathComponent)”"
                                 : "“\(url.lastPathComponent)” is on a disk that isn’t connected",
-                               fontName: "New York", size: 20, weight: .semibold))
+                               fontName: "New York", size: TextSize.title.rawValue, weight: .semibold))
                 .foregroundColor(.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
             Text(breadcrumb)
-                .font(.notely(12))
+                .font(.notely(.caption))
                 .foregroundColor(.faintText)
                 .padding(.top, 6)
             Text(volume.map { "It opens once “\($0)” is connected." } ?? "It may have been moved, renamed or deleted.")
-                .font(.notely(13))
+                .font(.notely(.body))
                 .foregroundColor(.tertiaryText)
                 .padding(.top, 12)
 
@@ -305,7 +326,7 @@ private struct MissingFolderPanel: View {
                         .frame(width: 6, height: 6)
                         .background(Circle().fill(Color.fromHex("#E0A93B").opacity(0.18)).frame(width: 12, height: 12))
                     Text("Waiting for the disk…")
-                        .font(.notely(12))
+                        .font(.notely(.caption))
                         .foregroundColor(.faintText)
                 }
                 .padding(.top, 14)
@@ -315,7 +336,7 @@ private struct MissingFolderPanel: View {
                 if volume == nil {
                     Button(action: locate) {
                         HStack(spacing: 6) {
-                            Text("Locate…").font(.notely(13, weight: .medium))
+                            Text("Locate…").font(.notely(.body, weight: .medium))
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 11, weight: .medium))
                                 .offset(x: isHoveringLocate ? 2 : 0)
@@ -344,7 +365,7 @@ private struct MissingFolderPanel: View {
     private func quietButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.notely(13))
+                .font(.notely(.body))
                 .foregroundColor(hovered == title ? .primaryText : .tertiaryText)
                 .padding(.bottom, 4)
                 .contentShape(Rectangle())

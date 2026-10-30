@@ -32,7 +32,7 @@ final class FrontmatterAttachment: NSTextAttachment, MarkdownBackedAttachment {
     static func render(_ fields: [Frontmatter.Field], width: CGFloat) -> NSImage {
         let rows = max(fields.count, 1)
         let size = NSSize(width: max(width, 1), height: CGFloat(rows) * rowHeight + bottomPadding + 1)
-        let font = NSFont.systemFont(ofSize: 13)
+        let font = NSFont.systemFont(ofSize: TextSize.body.rawValue)
 
         return NSImage(size: size, flipped: true) { _ in
             let keyAttrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: MarkdownPalette.tertiary]

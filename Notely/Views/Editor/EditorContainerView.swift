@@ -55,10 +55,10 @@ private struct EmptyLibraryPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(BodyFace.text("No notes here yet", fontName: editorFontName, size: 19, weight: .semibold))
+            Text(BodyFace.text("No notes here yet", fontName: editorFontName, size: TextSize.title.rawValue, weight: .semibold))
                 .foregroundColor(.primaryText)
             Text("“\(name)” is a plain folder. Write here, or drop .md files into it — they show up on the left.")
-                .font(.notely(13))
+                .font(.notely(.body))
                 .lineSpacing(4)
                 .foregroundColor(.tertiaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -71,7 +71,7 @@ private struct EmptyLibraryPage: View {
                         Text("Write the First Note").fontWeight(.medium)
                         Text("⌘N").foregroundColor(.faintText)
                     }
-                    .font(.notely(13))
+                    .font(.notely(.body))
                     .foregroundColor(.primaryText)
                     .padding(.bottom, 3)
                     .overlay(alignment: .bottom) { Rectangle().fill(Color.primaryText).frame(height: 1) }
@@ -82,7 +82,7 @@ private struct EmptyLibraryPage: View {
                 if let url = store.workspaceURL {
                     Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                         .buttonStyle(.plain)
-                        .font(.notely(13))
+                        .font(.notely(.body))
                         .foregroundColor(isHoveringReveal ? .primaryText : .tertiaryText)
                         .onHover { isHoveringReveal = $0 }
                 }

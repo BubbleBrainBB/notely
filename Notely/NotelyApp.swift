@@ -35,14 +35,12 @@ struct WindowRoot: View {
     @Environment(ThemeManager.self) private var themeManager
     @State private var store = FileNoteStore()
     @State private var appModel = AppModel()
-    @State private var settingsTabState = SettingsTabState()
 
     var body: some View {
         AppShellView()
             .background(WindowCloseBehavior(store: store, appModel: appModel).frame(width: 0, height: 0))
             .environment(store)
             .environment(appModel)
-            .environment(settingsTabState)
             // One accent everywhere: Notely's own (Settings › Appearance),
             // not the system accent the native controls would otherwise pick.
             .tint(Color.accent)

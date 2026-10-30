@@ -505,14 +505,14 @@ struct DocumentInfoPopover: View {
                 InspectorDivider().padding(.horizontal, 0)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tags")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.notely(.caption, weight: .semibold))
                         .foregroundColor(.tertiaryText)
                         .tracking(0.4)
                         .textCase(.uppercase)
                     FlowLayout(spacing: 6) {
                         ForEach(note.tags, id: \.self) { tag in
                             Text("#\(tag)")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.notely(.caption, weight: .medium))
                                 .foregroundColor(.accent)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
@@ -535,11 +535,11 @@ struct InspectorStatRow: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.system(size: 13))
+                .font(.notely(.body))
                 .foregroundColor(.secondaryText)
             Spacer()
             Text(value)
-                .font(.system(size: 13, weight: .medium))
+                .font(.notely(.body, weight: .medium))
                 .foregroundColor(.primaryText)
                 .lineLimit(1)
         }

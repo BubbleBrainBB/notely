@@ -105,13 +105,13 @@ struct OutlineRail: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 Text(heading.text)
-                    .font(.notely(12.5, weight: .medium))
+                    .font(.notely(.caption, weight: .medium))
                     .foregroundColor(.primaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !heading.summary.isEmpty {
                     Text(heading.summary)
-                        .font(.notely(12))
+                        .font(.notely(.caption))
                         .foregroundColor(.tertiaryText)
                         .lineSpacing(3)
                         .lineLimit(3)

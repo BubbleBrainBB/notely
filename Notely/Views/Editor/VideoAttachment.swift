@@ -106,7 +106,7 @@ final class VideoAttachment: NSTextAttachment, MarkdownBackedAttachment {
             if duration > 0 {
                 let text = Self.format(duration) as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium),
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: TextSize.caption.rawValue, weight: .medium),
                     .foregroundColor: NSColor.white,
                 ]
                 let size = text.size(withAttributes: attrs)
@@ -123,7 +123,7 @@ final class VideoAttachment: NSTextAttachment, MarkdownBackedAttachment {
             para.lineBreakMode = .byTruncatingMiddle
             (name as NSString).draw(
                 in: NSRect(x: 0, y: videoSize.height + 7, width: width, height: Self.captionHeight - 7),
-                withAttributes: [.font: NSFont.systemFont(ofSize: 12.5),
+                withAttributes: [.font: NSFont.systemFont(ofSize: TextSize.caption.rawValue),
                                  .foregroundColor: MarkdownPalette.tertiary,
                                  .paragraphStyle: para])
             return true

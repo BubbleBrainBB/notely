@@ -80,6 +80,10 @@ final class ThemeManager {
     var renderKey: String { accentHex + "|" + theme.rawValue }
 
     var isGlass: Bool { theme == .glass }
+    /// The page is the ground's own color (Glass's see-through sheets), so
+    /// what sits on the page — the active tab — needs the page's hairline
+    /// edge to read.
+    var pageMatchesGround: Bool { theme == .glass }
 
     func setAccent(_ hex: String) {
         accentHex = hex
@@ -217,13 +221,18 @@ extension Color {
     }
 }
 
-extension Font {
-    static func notely(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .default)
-    }
+/// The app's only text sizes: notes and secondary lines, body and controls,
+/// emphasis, page titles. Nothing in the interface goes under 12.
+enum TextSize: CGFloat {
+    case caption = 12
+    case body = 13
+    case emphasis = 15
+    case title = 20
+}
 
-    static func notelyMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+extension Font {
+    static func notely(_ size: TextSize, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        .system(size: size.rawValue, weight: weight, design: design)
     }
 }
 

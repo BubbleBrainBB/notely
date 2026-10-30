@@ -105,7 +105,7 @@ enum AppSettings {
     static let appearanceModeKey = "notely.appearanceMode"
 
     static var colorTheme: AppTheme {
-        get { UserDefaults.standard.string(forKey: colorThemeKey).flatMap(AppTheme.init(rawValue:)) ?? .paper }
+        get { UserDefaults.standard.string(forKey: colorThemeKey).flatMap(AppTheme.init(rawValue:)) ?? .white }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: colorThemeKey) }
     }
 
