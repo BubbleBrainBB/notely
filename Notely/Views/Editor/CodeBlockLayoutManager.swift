@@ -23,8 +23,16 @@ enum MarkdownPalette {
     static let secondary = NSColor.themed(\.text2)
     static let tertiary = NSColor.themed(\.text3)
     static let faint = NSColor.themed(\.faintText)
-    /// Markdown syntax revealed on the caret's paragraph.
-    static let marker = NSColor.themed(\.marker)
+    /// Markdown syntax revealed on the caret's paragraph. Glass lets what's
+    /// behind the window through the page, where the fixed light gray
+    /// matched a darker backdrop and the syntax vanished; there it is the
+    /// ink at a quarter strength instead — the same gray on white, and
+    /// always a shade darker than whatever shows through.
+    static let marker = NSColor(name: nil) { appearance in
+        let palette = ThemePalette.palette(ThemeManager.activeTheme, dark: appearance.isDark)
+        guard ThemeManager.activeTheme == .glass else { return .hex(palette.marker) }
+        return .hex(palette.text, alpha: 0.26)
+    }
     static let rule = NSColor.themed(\.rule)
     static let codeBlockBg = NSColor.themed(\.codeBlock)
     static let inlineBg = NSColor.themed(\.inlineCode)
