@@ -511,6 +511,7 @@ private struct WritingSettings: View {
     @AppStorage(AppSettings.editorWidthKey) private var editorWidth = "medium"
     @AppStorage(AppSettings.spellCheckKey) private var spellCheck = AppSettings.defaultSpellCheck
     @AppStorage(AppSettings.smartPunctuationKey) private var smartPunctuation = AppSettings.defaultSmartPunctuation
+    @AppStorage(AppSettings.slashCommandsKey) private var slashCommands = AppSettings.defaultSlashCommands
 
     private var lineSpacing: Binding<LineSpacingPreset> {
         Binding(get: { LineSpacingPreset.from(multiplier: lineHeight) },
@@ -537,6 +538,9 @@ private struct WritingSettings: View {
         }
         SettingRow(title: "Smart quotes and dashes") {
             SettingsSwitch(isOn: $smartPunctuation, label: "Smart quotes and dashes")
+        }
+        SettingRow(title: "Slash commands") {
+            SettingsSwitch(isOn: $slashCommands, label: "Slash commands")
         }
     }
 }

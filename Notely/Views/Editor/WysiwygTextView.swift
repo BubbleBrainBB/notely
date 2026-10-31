@@ -1,6 +1,7 @@
 import AppKit
 import AVKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Simple file-based diagnostics.
 enum Diag {
@@ -666,7 +667,12 @@ final class WysiwygTextView: NSTextView {
                   let url = try? AttachmentImport.saveImage(image.data, ext: image.ext, into: library) {
             imported = [url]
         }
-        guard !imported.isEmpty else { return false }
+        return insertImported(imported, replacing: range)
+    }
+
+    /// Links files already copied into the library, each on a line of its own.
+    private func insertImported(_ imported: [URL], replacing range: NSRange) -> Bool {
+        guard let library = ImageLoader.shared.workspaceURL, !imported.isEmpty else { return false }
 
         let noteFolder = ImageLoader.shared.baseURL ?? library
         var text = imported
@@ -693,6 +699,12 @@ final class WysiwygTextView: NSTextView {
         return result
     }
 
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        if result { slashMenu.close() }
+        return result
+    }
+
     /// Check if this text view is currently the window's first responder.
     func isFirstResponder() -> Bool {
         return window?.firstResponder == self
@@ -701,7 +713,7 @@ final class WysiwygTextView: NSTextView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         Diag.log("viewDidMoveToWindow window=\(window != nil) frame=\(frame) isEditable=\(isEditable)")
-        if window != nil { restyle() }
+        if window != nil { restyle() } else { slashMenu.close() }
         if window != nil, focusesOnAppear {
             DispatchQueue.main.async { [weak self] in
                 guard let self, let window = self.window else { return }
@@ -778,8 +790,11 @@ final class WysiwygTextView: NSTextView {
         Diag.log("didChangeText string='\(string.prefix(30))'")
         let edit = pendingEdit
         let edited = pendingEditLocation
+        let typedSlash = pendingSlash
         pendingEdit = nil
         pendingEditLocation = nil
+        pendingSlash = false
+        defer { updateSlashMenu(typedSlash: typedSlash) }
         let caret = selectedRange().location
         // The edited line as well as the caret's: they differ when the edit
         // isn't typed at the caret (a checkbox clicked on another line).
@@ -804,6 +819,8 @@ final class WysiwygTextView: NSTextView {
     private var pendingEdit: LineEdit?
     /// Where the edit under way starts, for restyling its line.
     private var pendingEditLocation: Int?
+    /// The edit under way types a slash, which may open the slash menu.
+    private var pendingSlash = false
 
     override func shouldChangeText(in range: NSRange, replacementString: String?) -> Bool {
         let allowed = super.shouldChangeText(in: range, replacementString: replacementString)
@@ -825,6 +842,11 @@ final class WysiwygTextView: NSTextView {
             }
             if pendingEdit == nil { pendingEditLocation = range.location }
             pendingEdit = pendingEdit == nil ? kind : (pendingEdit == .withinLine && kind == .withinLine ? .withinLine : .other)
+            // A lone slash typed (or committed by an input method in place
+            // of what it was composing), not one replacing a selection.
+            let typed = inserted as NSString
+            pendingSlash = typed.length == 1 && SlashCommand.isTrigger(typed.character(at: 0))
+                && (range.length == 0 || range == markedRange())
         }
         return allowed
     }
@@ -1042,6 +1064,7 @@ final class WysiwygTextView: NSTextView {
     /// input method is composing, which a replacement would break.
     func replaceMarkdown(with markdown: String) -> Bool {
         guard !hasMarkedText(), let storage = textStorage else { return false }
+        slashMenu.close()
         let old = markdownString()
         guard old != markdown else { return true }
         let caret = Merge3.mapLocation(rawLocation(forDisplayLocation: selectedRange().location),
@@ -1122,6 +1145,7 @@ final class WysiwygTextView: NSTextView {
     /// line it lands on (an image's source, a heading's `##`) is revealed the
     /// same way a click reveals it.
     override func keyDown(with event: NSEvent) {
+        if slashMenu.isOpen, !hasMarkedText(), handleSlashMenuKey(event) { return }
         let before = selectedRange()
         super.keyDown(with: event)
         let navigationKeys: Set<NSEvent.SpecialKey> = [.upArrow, .downArrow, .leftArrow, .rightArrow,
@@ -1172,6 +1196,7 @@ final class WysiwygTextView: NSTextView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        slashMenu.close()
         if let window = window, window.firstResponder != self {
             window.makeFirstResponder(self)
         }
@@ -1359,6 +1384,156 @@ final class WysiwygTextView: NSTextView {
                 entry.view.removeFromSuperview()
                 videoPlayers[id] = nil
             }
+        }
+    }
+
+    // MARK: - Slash menu
+
+    /// Typing `/` at the start of a line or after a space opens a menu of
+    /// blocks and formats to insert as Markdown (design board 56 A).
+    private lazy var slashMenu: SlashMenuController = {
+        let controller = SlashMenuController(textView: self)
+        controller.displayAnchor = { [weak self] in
+            guard let self, let anchor = self.slashMenu.anchor else { return nil }
+            return self.displayLocation(forRawLocation: anchor)
+        }
+        return controller
+    }()
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        if !isRestyling, slashMenu.isOpen { refreshSlashQuery() }
+    }
+
+    /// After an edit: opens the menu for a slash just typed, or filters the
+    /// open one for the text typed after its slash.
+    private func updateSlashMenu(typedSlash: Bool) {
+        if slashMenu.isOpen {
+            refreshSlashQuery()
+            return
+        }
+        let caret = selectedRange()
+        guard typedSlash, AppSettings.slashCommands, !hasMarkedText(), caret.length == 0, caret.location > 0,
+              SlashCommand.isTrigger((string as NSString).character(at: caret.location - 1)) else { return }
+        let slash = rawLocation(forDisplayLocation: caret.location - 1)
+        guard SlashCommand.opensMenu(at: slash, in: markdownString() as NSString) else { return }
+        slashMenu.open(at: slash) { [weak self] command in self?.applySlashCommand(command) }
+    }
+
+    /// Filters the open menu for the text between its slash and the caret,
+    /// or closes it once the caret has left that text, the slash is gone or
+    /// a space was typed.
+    private func refreshSlashQuery() {
+        guard let anchor = slashMenu.anchor else { return }
+        let ns = string as NSString
+        let slash = displayLocation(forRawLocation: anchor)
+        let caret = selectedRange()
+        guard caret.length == 0, slash < ns.length, caret.location > slash,
+              SlashCommand.isTrigger(ns.character(at: slash)) else {
+            slashMenu.close()
+            return
+        }
+        var query = ns.substring(with: NSRange(location: slash + 1, length: caret.location - slash - 1))
+        if hasMarkedText() {
+            // Pinyin being composed may show separators between syllables.
+            query = query.filter { !$0.isWhitespace && $0 != "'" }
+        }
+        guard query.count <= 32, !query.contains(where: { $0.isWhitespace || $0.isNewline }) else {
+            slashMenu.close()
+            return
+        }
+        slashMenu.update(query: query)
+    }
+
+    /// ↑ ↓ (and ⌃P ⌃N) move, ↵ or ⇥ insert, esc closes. Everything else
+    /// types as usual and filters.
+    private func handleSlashMenuKey(_ event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let control = modifiers == .control
+        switch (event.keyCode, modifiers.isEmpty) {
+        case (126, true):
+            slashMenu.moveSelection(by: -1)
+            return true
+        case (125, true):
+            slashMenu.moveSelection(by: 1)
+            return true
+        case (36, true), (76, true), (48, true):
+            if let command = slashMenu.model.selected {
+                applySlashCommand(command)
+                return true
+            }
+            slashMenu.close()
+            return false
+        case (53, _):
+            slashMenu.close()
+            return true
+        default:
+            break
+        }
+        switch (control, event.charactersIgnoringModifiers) {
+        case (true, "p"?):
+            slashMenu.moveSelection(by: -1)
+            return true
+        case (true, "n"?):
+            slashMenu.moveSelection(by: 1)
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Replaces the slash and its query with what `command` inserts. Line
+    /// commands rewrite the whole line, so the edit spans it; a line holding
+    /// an attachment (an image, a rendered table) keeps it, and only the
+    /// slash and query are replaced.
+    private func applySlashCommand(_ command: SlashCommand) {
+        guard let anchor = slashMenu.anchor else { return }
+        let ns = string as NSString
+        let slash = displayLocation(forRawLocation: anchor)
+        let caret = selectedRange().location
+        slashMenu.close()
+        guard slash < ns.length, caret > slash else { return }
+
+        let lineRange = ns.lineRange(for: NSRange(location: slash, length: 0))
+        var contentEnd = NSMaxRange(lineRange)
+        while contentEnd > lineRange.location, ns.character(at: contentEnd - 1) == 0x0A || ns.character(at: contentEnd - 1) == 0x0D {
+            contentEnd -= 1
+        }
+        var span = NSRange(location: lineRange.location, length: contentEnd - lineRange.location)
+        if ns.substring(with: span).contains("\u{FFFC}") {
+            span = NSRange(location: slash, length: caret - slash)
+        }
+        let query = NSRange(location: slash - span.location, length: caret - slash)
+        let edit = command.edit(line: ns.substring(with: span), query: query)
+
+        let rawStart = rawLocation(forDisplayLocation: span.location)
+        insertText(edit.text, replacementRange: span)
+        // Place the caret, restyle around it (a code block or table opens as
+        // source), then select within it where the item asks.
+        setSelectedRange(NSRange(location: displayLocation(forRawLocation: rawStart + edit.selection.location), length: 0))
+        restyle()
+        if edit.selection.length > 0 {
+            let start = displayLocation(forRawLocation: rawStart + edit.selection.location)
+            setSelectedRange(NSRange(location: start, length: edit.selection.length))
+        }
+        scrollRangeToVisible(selectedRange())
+        if command.action == .chooseImage { chooseMediaFiles() }
+    }
+
+    /// Picks images or videos to link at the caret, copied into the library
+    /// as a drop would be.
+    private func chooseMediaFiles() {
+        guard let window, let library = ImageLoader.shared.workspaceURL else { return }
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image, .movie]
+        panel.prompt = "Insert"
+        let range = selectedRange()
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let self else { return }
+            let imported = panel.urls.compactMap { try? AttachmentImport.importFile($0, into: library) }
+            _ = self.insertImported(imported, replacing: range)
         }
     }
 
