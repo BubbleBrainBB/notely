@@ -129,6 +129,10 @@ struct WysiwygEditor: NSViewRepresentable {
     /// into it without moving the caret.
     var handle: EditorHandle? = nil
     let onTextChange: (String) -> Void
+    /// A clicked link to a note: its id, a heading in it, in a new tab.
+    var onOpenNote: ((String, String?, Bool) -> Void)? = nil
+    /// A link to a note that doesn't exist, which the user chose to create.
+    var onCreateNote: ((String) -> String?)? = nil
 
     /// Where each note was left: caret, scroll offset, whether it had focus.
     struct Place {
@@ -184,6 +188,8 @@ struct WysiwygEditor: NSViewRepresentable {
         Self.applyTypingOptions(textView, spellCheck: spellCheck, smartPunctuation: smartPunctuation)
         textView.delegate = context.coordinator
         handle?.textView = textView
+        textView.onOpenNote = onOpenNote
+        textView.onCreateNote = onCreateNote
         textView.onTextChange = { newText in
             context.coordinator.lastKnownText = newText
             context.coordinator.onTextChange(newText)
@@ -247,6 +253,8 @@ struct WysiwygEditor: NSViewRepresentable {
         // writing the displayed note's text into the wrong note's file.
         context.coordinator.onTextChange = onTextChange
         handle?.textView = textView
+        textView.onOpenNote = onOpenNote
+        textView.onCreateNote = onCreateNote
 
         // Only sync text when switching notes (external content change),
         // never during typing. We detect this by comparing initialText against
@@ -434,6 +442,13 @@ final class WysiwygTextView: NSTextView {
             self,
             selector: #selector(handleScrollToHeading(_:)),
             name: .scrollToHeading,
+            object: nil
+        )
+        // A linked note renamed or retitled: its links show the new title.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleLinkIndexChange),
+            name: WikiLinkIndex.didChange,
             object: nil
         )
     }
@@ -917,6 +932,7 @@ final class WysiwygTextView: NSTextView {
     func restyle() {
         if isRestyling { return }
         guard let storage = textStorage else { return }
+        setHoveredLink(nil)
         isRestyling = true
         restyleCount += 1
         defer { isRestyling = false }
@@ -1013,6 +1029,10 @@ final class WysiwygTextView: NSTextView {
     }
 
     @objc private func handleImageDidLoad() {
+        setNeedsRestyle()
+    }
+
+    @objc private func handleLinkIndexChange() {
         setNeedsRestyle()
     }
 
@@ -1197,6 +1217,10 @@ final class WysiwygTextView: NSTextView {
 
     override func mouseDown(with event: NSEvent) {
         slashMenu.close()
+        if event.clickCount == 1, !event.modifierFlags.contains(.shift),
+           let hit = link(at: convert(event.locationInWindow, from: nil)), follows(hit, clickedWith: event) {
+            return
+        }
         if let window = window, window.firstResponder != self {
             window.makeFirstResponder(self)
         }
@@ -1385,6 +1409,183 @@ final class WysiwygTextView: NSTextView {
                 videoPlayers[id] = nil
             }
         }
+    }
+
+    // MARK: - Links (design board 58)
+
+    /// Opens the note a link points to: its id, the heading to scroll to,
+    /// and whether in a new tab behind this one.
+    var onOpenNote: ((String, String?, Bool) -> Void)?
+    /// Creates the note a link names that doesn't exist yet, beside this
+    /// one; returns its id.
+    var onCreateNote: ((String) -> String?)?
+
+    /// A link under the pointer: its characters, and what it opens.
+    private struct LinkHit {
+        let range: NSRange
+        var wiki: String?
+        var web: String?
+        var attachment: WikiLinkAttachment?
+    }
+
+    private func link(at point: NSPoint) -> LinkHit? {
+        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else { return nil }
+        let inContainer = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
+        let glyph = layoutManager.glyphIndex(for: inContainer, in: textContainer)
+        let box = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
+        guard box.insetBy(dx: -1, dy: -2).contains(inContainer) else { return nil }
+        let index = layoutManager.characterIndexForGlyph(at: glyph)
+        guard index < storage.length else { return nil }
+        let all = NSRange(location: 0, length: storage.length)
+        var range = NSRange()
+        if let wiki = storage.attribute(.wikiLink, at: index, longestEffectiveRange: &range, in: all) as? String {
+            return LinkHit(range: range, wiki: wiki,
+                           attachment: storage.attribute(.attachment, at: index, effectiveRange: nil) as? WikiLinkAttachment)
+        }
+        if let web = storage.attribute(.webLink, at: index, longestEffectiveRange: &range, in: all) as? String {
+            return LinkHit(range: range, web: web)
+        }
+        return nil
+    }
+
+    // Hover: the pointing hand, a faint fill behind the link and a darker
+    // underline; a web link's address shows at the page's foot.
+
+    private var hoveredLink: LinkHit?
+    private var linkTrackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let linkTrackingArea { removeTrackingArea(linkTrackingArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                  owner: self)
+        addTrackingArea(area)
+        linkTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        let hit = link(at: convert(event.locationInWindow, from: nil))
+        let wasOnLink = hoveredLink != nil
+        setHoveredLink(hit)
+        if hit != nil {
+            NSCursor.pointingHand.set()
+        } else if wasOnLink {
+            NSCursor.iBeam.set()
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        setHoveredLink(nil)
+    }
+
+    private func setHoveredLink(_ hit: LinkHit?) {
+        guard hit?.range != hoveredLink?.range else { return }
+        if let old = hoveredLink { showHover(old, on: false) }
+        hoveredLink = hit
+        if let hit { showHover(hit, on: true) }
+        showAddress(hit?.web)
+    }
+
+    private func showHover(_ hit: LinkHit, on: Bool) {
+        guard let layoutManager = layoutManager as? CodeBlockLayoutManager,
+              NSMaxRange(hit.range) <= (textStorage?.length ?? 0) else { return }
+        if let attachment = hit.attachment {
+            attachment.isHovered = on
+        } else if on {
+            layoutManager.hoveredLink = hit.range
+            layoutManager.addTemporaryAttribute(.underlineColor, value: MarkdownPalette.primary.withAlphaComponent(0.7),
+                                                forCharacterRange: hit.range)
+        } else {
+            layoutManager.hoveredLink = nil
+            layoutManager.removeTemporaryAttribute(.underlineColor, forCharacterRange: hit.range)
+        }
+        layoutManager.invalidateDisplay(forCharacterRange: hit.range)
+    }
+
+    private lazy var addressLabel: NSTextField = {
+        let label = NSTextField(labelWithString: "")
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = MarkdownPalette.secondary
+        label.lineBreakMode = .byTruncatingMiddle
+        label.wantsLayer = true
+        label.layer?.backgroundColor = MarkdownPalette.inlineBg.cgColor
+        label.layer?.cornerRadius = 5
+        return label
+    }()
+
+    /// Where a web link goes, at the page's lower left as in a browser.
+    private func showAddress(_ address: String?) {
+        guard let address, let scrollView = enclosingScrollView else {
+            addressLabel.removeFromSuperview()
+            return
+        }
+        addressLabel.stringValue = "  \(address)  "
+        addressLabel.layer?.backgroundColor = MarkdownPalette.inlineBg.cgColor
+        let width = min(addressLabel.intrinsicContentSize.width, scrollView.bounds.width - 24)
+        addressLabel.frame = NSRect(x: 12, y: scrollView.isFlipped ? scrollView.bounds.height - 32 : 12,
+                                    width: width, height: 20)
+        if addressLabel.superview !== scrollView { scrollView.addSubview(addressLabel) }
+    }
+
+    /// A click on a link opens it — unless the caret is on its line, where
+    /// a plain click edits (⌘ still opens), or the pointer drags off to
+    /// select. ⌘ opens a note in a new tab.
+    private func follows(_ hit: LinkHit, clickedWith event: NSEvent) -> Bool {
+        let command = event.modifierFlags.contains(.command)
+        let ns = string as NSString
+        if !command, isFirstResponder() {
+            let caretLine = ns.lineRange(for: NSRange(location: min(selectedRange().location, ns.length), length: 0))
+            if NSLocationInRange(hit.range.location, caretLine) { return false }
+        }
+        guard let window else { return false }
+        let start = event.locationInWindow
+        while let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            if next.type == .leftMouseUp { break }
+            if hypot(next.locationInWindow.x - start.x, next.locationInWindow.y - start.y) > 3 { return false }
+        }
+        open(hit, inNewTab: command)
+        return true
+    }
+
+    private func open(_ hit: LinkHit, inNewTab: Bool) {
+        if let web = hit.web {
+            let url = URL(string: web) ?? web.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed).flatMap(URL.init)
+            if let url { NSWorkspace.shared.open(url) }
+            return
+        }
+        guard let inner = hit.wiki, let link = WikiLink(inner) else { return }
+        if let entry = WikiLinkIndex.shared.resolve(link.target, from: ImageLoader.shared.baseURL) {
+            setHoveredLink(nil)
+            onOpenNote?(entry.id, link.heading, inNewTab)
+        } else {
+            offerToCreate(link, at: hit.range, inNewTab: inNewTab)
+        }
+    }
+
+    private var createPopover: NSPopover?
+
+    /// A link to a note that doesn't exist: offers to create it.
+    private func offerToCreate(_ link: WikiLink, at range: NSRange, inNewTab: Bool) {
+        guard let layoutManager, let textContainer, onCreateNote != nil else { return }
+        let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        let name = (link.target as NSString).lastPathComponent
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(rootView: CreateLinkedNoteView(
+            name: name,
+            onCancel: { [weak popover] in popover?.close() },
+            onCreate: { [weak self, weak popover] in
+                popover?.close()
+                guard let self, let id = self.onCreateNote?(name) else { return }
+                self.onOpenNote?(id, nil, inNewTab)
+            }
+        ))
+        popover.show(relativeTo: rect, of: self, preferredEdge: .maxY)
+        createPopover = popover
     }
 
     // MARK: - Slash menu
@@ -1581,5 +1782,30 @@ final class WysiwygTextView: NSTextView {
         let absRange = NSRange(location: lineRange.location + match.range(at: 1).location, length: 1)
         storage.replaceCharacters(in: absRange, with: newChar)
         didChangeText()
+    }
+}
+
+/// Asks before creating the note a link names (design board 58 ⑥).
+private struct CreateLinkedNoteView: View {
+    let name: String
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("No note named “\(name)” yet.")
+                .font(.notely(.body))
+                .foregroundColor(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Create Note", action: onCreate)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(14)
+        .frame(width: 280)
     }
 }

@@ -212,6 +212,21 @@ final class AppModel {
         open(.note(id), inNewTab: inNewTab)
     }
 
+    /// Follows a link to a note (design board 58): in this tab, a step its
+    /// Back returns from — or, with `inNewTab`, in a new tab behind this
+    /// one. A pinned tab keeps its page, so the note opens beside it.
+    func followLink(to id: String, inNewTab: Bool) {
+        dismissOverlays()
+        if inNewTab {
+            guard !tabs.contains(where: { $0.content == .note(id) }) else { return }
+            insertTab(NoteTab(content: .note(id)), activate: false)
+        } else if activeTab.isPinned {
+            open(.note(id), inNewTab: true)
+        } else {
+            activeContent = .note(id)
+        }
+    }
+
     func openMemos(inNewTab: Bool = false) {
         open(.memos, inNewTab: inNewTab)
     }
@@ -251,10 +266,10 @@ final class AppModel {
     }
 
     /// Right after the active tab, but never among the pinned ones.
-    private func insertTab(_ tab: NoteTab) {
+    private func insertTab(_ tab: NoteTab, activate: Bool = true) {
         let firstUnpinned = tabs.firstIndex { !$0.isPinned } ?? tabs.count
         tabs.insert(tab, at: max(activeIndex + 1, firstUnpinned))
-        activeTabId = tab.id
+        if activate { activeTabId = tab.id }
     }
 
     func selectTab(_ id: UUID) {
