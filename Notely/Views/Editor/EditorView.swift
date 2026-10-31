@@ -102,7 +102,9 @@ struct EditorView: View {
                     focusesOnAppear: isDraft,
                     placeKey: isDraft ? nil : note.id,
                     handle: editorHandle,
-                    onTextChange: handleTextChange
+                    onTextChange: handleTextChange,
+                    onOpenNote: openLinkedNote,
+                    onCreateNote: createLinkedNote
                 )
                 .frame(maxWidth: .infinity)
                 .background(Color.pageContentBg)
@@ -172,6 +174,28 @@ struct EditorView: View {
             updateCounts(from: newText)
             publishPreview(newText)
         }
+    }
+
+    /// A link clicked in the text (design board 58): the note opens here,
+    /// or in a tab behind this one, scrolled to the heading it names.
+    private func openLinkedNote(_ id: String, heading: String?, inNewTab: Bool) {
+        appModel.followLink(to: id, inNewTab: inNewTab)
+        guard let heading, !inNewTab,
+              let content = store.notes.first(where: { $0.id == id })?.content else { return }
+        let text = content as NSString
+        let headings = WysiwygTextView.headingLineRanges(in: text).map {
+            text.substring(with: $0).trimmingCharacters(in: CharacterSet(charactersIn: "# ").union(.newlines))
+        }
+        guard let index = headings.firstIndex(where: { $0.caseInsensitiveCompare(heading) == .orderedSame }) else { return }
+        // Once the note's editor is up.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            NotificationCenter.default.post(name: .scrollToHeading, object: nil, userInfo: ["index": index])
+        }
+    }
+
+    /// A link to a note that doesn't exist, created beside this one.
+    private func createLinkedNote(_ name: String) -> String? {
+        store.createNote(title: name, in: note.url.deletingLastPathComponent())?.id
     }
 
     private func noteText(_ markdown: String) -> AppModel.NoteText {

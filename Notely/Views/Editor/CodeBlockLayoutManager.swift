@@ -135,10 +135,13 @@ final class CodeBlockLayoutManager: NSLayoutManager {
     /// Extra height added above and below a block box's text.
     var verticalPadding: CGFloat = 10
     var cornerRadius: CGFloat = 8
+    /// The link under the pointer (design board 58): a faint fill behind it.
+    var hoveredLink: NSRange?
 
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         drawCodeBlockBoxes(forGlyphRange: glyphsToShow, at: origin)
         drawCalloutBoxes(forGlyphRange: glyphsToShow, at: origin)
+        drawHoveredLink(forGlyphRange: glyphsToShow, at: origin)
         drawInlineFills(.inlinePill, padding: WysiwygEngine.pillPadding, radius: 4,
                         forGlyphRange: glyphsToShow, at: origin)
         drawInlineFills(.textHighlight, padding: 0, radius: 3,
@@ -399,6 +402,26 @@ final class CodeBlockLayoutManager: NSLayoutManager {
                 color.setFill()
                 NSBezierPath(roundedRect: pill, xRadius: radius, yRadius: radius).fill()
             }
+        }
+    }
+
+    private func drawHoveredLink(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        guard let range = hoveredLink, let storage = textStorage, let container = textContainers.first,
+              NSMaxRange(range) <= storage.length else { return }
+        let gRange = glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        guard NSIntersectionRange(gRange, glyphsToShow).length > 0 else { return }
+        let font = (storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont)
+            ?? NSFont.systemFont(ofSize: 14)
+        // One fill per line the link wraps across.
+        enumerateLineFragments(forGlyphRange: gRange) { _, _, _, lineGlyphs, _ in
+            let part = NSIntersectionRange(lineGlyphs, gRange)
+            guard part.length > 0 else { return }
+            let bounds = self.boundingRect(forGlyphRange: part, in: container)
+            let baseline = self.baselineY(forGlyphAt: part.location, origin: origin)
+            let fill = NSRect(x: origin.x + bounds.minX - 3, y: baseline - font.ascender - 2,
+                              width: bounds.width + 6, height: font.ascender - font.descender + 4)
+            MarkdownPalette.primary.withAlphaComponent(0.07).setFill()
+            NSBezierPath(roundedRect: fill, xRadius: 4, yRadius: 4).fill()
         }
     }
 

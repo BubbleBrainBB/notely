@@ -344,6 +344,7 @@ final class WysiwygEngine {
 
         storage.beginEditing()
         imageOccurrences.removeAll(keepingCapacity: true)
+        wikiOccurrences.removeAll(keepingCapacity: true)
 
         // Start from the body style everywhere: one pass that also drops
         // every mark from the last styling.
@@ -593,6 +594,20 @@ final class WysiwygEngine {
                                      revealed))
             }
         }
+        // Links to notes whose shown text isn't in the file — the note's
+        // front matter title, `Title › Heading` — become attachments that
+        // draw it (design board 58); the rest are styled in place below.
+        WikiLink.pattern.enumerateMatches(in: storage.string, range: fullRange) { match, _, _ in
+            guard let match, !isInCode(match.range.location), !touchesCaret(match.range) else { return }
+            if let frontmatter, NSLocationInRange(match.range.location, frontmatter.range) { return }
+            let inner = nsString.substring(with: match.range(at: 1))
+            guard let link = WikiLink(inner) else { return }
+            let shown = shownWikiText(link, inner: inner)
+            guard shown.inText == nil else { return }
+            replacements.append((match.range, wikiAttachment(shown.text, link: inner, at: match.range.location, in: storage,
+                                                             source: nsString.substring(with: match.range),
+                                                             maxWidth: maxWidth), false))
+        }
         replacements.sort { $0.range.location < $1.range.location }
 
         // Inline styling below runs on the collapsed text, so map the caret
@@ -611,6 +626,14 @@ final class WysiwygEngine {
 
         let revealedParagraph = Self.paragraph(lineSpacing: 10, before: 8, after: 8)
         for item in replacements.reversed() {
+            if let link = item.attachment as? WikiLinkAttachment {
+                // Inline, keeping its line's paragraph and font: only the link changes.
+                var attributes = storage.attributes(at: item.range.location, effectiveRange: nil)
+                attributes[.attachment] = link
+                attributes[.wikiLink] = link.link
+                storage.replaceCharacters(in: item.range, with: NSAttributedString(string: "\u{FFFC}", attributes: attributes))
+                continue
+            }
             let replacement = NSMutableAttributedString(attachment: item.attachment)
             replacement.addAttributes(style.baseParagraph, range: NSRange(location: 0, length: replacement.length))
             replacement.addAttribute(.paragraphStyle,
@@ -697,6 +720,11 @@ final class WysiwygEngine {
                     addPill(storage, content: range, color: MarkdownPalette.inlineBg, leadingSpacer: spacer)
                 }
             }
+        }
+
+        styleLinks(storage, cursor: inlineCursor) { location in
+            styledCodeBlockRanges.contains { NSLocationInRange(location, $0) }
+                || styledFrontmatter.map { NSLocationInRange(location, $0) } ?? false
         }
 
         // Composite fonts last: every run now carries its final size and
@@ -796,7 +824,9 @@ final class WysiwygEngine {
             return false
         }
         if isHorizontalRuleText(trimmed) { return false }
-        for marker in ["![", "$", "|", "\u{FFFC}"] where line.contains(marker) { return false }
+        // `[[` too: a link to a note may become an attachment, which a
+        // line restyled on its own can't take.
+        for marker in ["![", "[[", "$", "|", "\u{FFFC}"] where line.contains(marker) { return false }
         // Inside the frontmatter (shown as source while the caret is in it).
         if ns.hasPrefix("---"), let frontmatter = Frontmatter.parse(ns),
            lineRange.location < NSMaxRange(frontmatter.range) { return false }
@@ -1312,6 +1342,123 @@ final class WysiwygEngine {
 
     /// Shrinks syntax characters to (almost) zero width and makes them clear,
     /// so the rendered text sits exactly where it would without them.
+    // MARK: - Links
+
+    /// What a `[[link]]` shows, whether its note exists, and where that text
+    /// already sits in the link's inner source (`target#heading|alias`) —
+    /// then it is styled in place, else drawn as an attachment. A missing
+    /// note's link always shows its text as written.
+    private func shownWikiText(_ link: WikiLink, inner: String) -> (text: String, inText: NSRange?, exists: Bool) {
+        let entry = WikiLinkIndex.shared.resolve(link.target, from: ImageLoader.shared.baseURL)
+        let ns = inner as NSString
+        // The alias, or the target's last path component.
+        let bar = ns.range(of: "|")
+        let slash = ns.range(of: "/", options: .backwards)
+        var start = bar.location != NSNotFound ? NSMaxRange(bar) : (slash.location != NSNotFound ? NSMaxRange(slash) : 0)
+        var end = ns.length
+        while start < end, ns.character(at: start) == 0x20 { start += 1 }
+        while end > start, ns.character(at: end - 1) == 0x20 { end -= 1 }
+        let visible = NSRange(location: start, length: end - start)
+        guard let entry else { return (ns.substring(with: visible), visible, false) }
+        let text = link.displayText(title: entry.title)
+        return (text, ns.substring(with: visible) == text ? visible : nil, true)
+    }
+
+    /// Repeats of the same link get attachments of their own.
+    private var wikiOccurrences: [String: Int] = [:]
+    private var wikiCache: [String: WikiLinkAttachment] = [:]
+
+    private func wikiAttachment(_ text: String, link: String, at location: Int, in storage: NSTextStorage,
+                                source: String, maxWidth: CGFloat) -> WikiLinkAttachment {
+        let font = storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont ?? style.bodyFont
+        let color = storage.attribute(.foregroundColor, at: location, effectiveRange: nil) as? NSColor ?? MarkdownPalette.primary
+        let base = "\(Int(maxWidth))|\(font.fontName)|\(font.pointSize)|\(ObjectIdentifier(color).hashValue)|\(text)|\(source)"
+        let occurrence = wikiOccurrences[base, default: 0]
+        wikiOccurrences[base] = occurrence + 1
+        let key = "\(base)#\(occurrence)"
+        if let cached = wikiCache[key] { return cached }
+        if wikiCache.count > 400 { wikiCache.removeAll() }
+        let drawn = NSTextStorage(string: text, attributes: [.font: font, .foregroundColor: color])
+        style.compositeFont.apply(to: drawn)
+        let attachment = WikiLinkAttachment(text: drawn, link: link, font: font, markdownSource: source, maxWidth: maxWidth)
+        wikiCache[key] = attachment
+        return attachment
+    }
+
+    /// Links in the text: `[[links]]` not drawn as attachments (the note's
+    /// title is the text written), `[text](url)` and bare addresses, each
+    /// marked with what a click opens. `skip` leaves code and the front
+    /// matter alone.
+    private func styleLinks(_ storage: NSTextStorage, cursor: Int, skip: (Int) -> Bool) {
+        let string = storage.string as NSString
+        let full = NSRange(location: 0, length: string.length)
+        func isCode(_ location: Int) -> Bool {
+            (storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont)?.isFixedPitch ?? false
+        }
+
+        WikiLink.pattern.enumerateMatches(in: storage.string, range: full) { match, _, _ in
+            guard let match, !skip(match.range.location), !isCode(match.range.location) else { return }
+            let innerRange = match.range(at: 1)
+            let inner = string.substring(with: innerRange)
+            guard let link = WikiLink(inner) else { return }
+            // `[[#Heading]]` and `[[a#b]]` hold no tags.
+            storage.removeAttribute(.inlinePill, range: match.range)
+            let open = NSRange(location: match.range.location, length: 2)
+            let close = NSRange(location: NSMaxRange(match.range) - 2, length: 2)
+            if NSLocationInRange(cursor, match.range) || cursor == NSMaxRange(match.range) {
+                applyMarkerStyle(storage, range: open)
+                applyMarkerStyle(storage, range: close)
+                return
+            }
+            let shown = shownWikiText(link, inner: inner)
+            guard let inText = shown.inText, inText.length > 0 else { return }
+            let visible = NSRange(location: innerRange.location + inText.location, length: inText.length)
+            collapse(storage, NSRange(location: match.range.location, length: visible.location - match.range.location))
+            collapse(storage, NSRange(location: NSMaxRange(visible), length: NSMaxRange(match.range) - NSMaxRange(visible)))
+            storage.addAttributes(shown.exists ? style.link : missingLink, range: visible)
+            storage.addAttribute(.wikiLink, value: inner, range: visible)
+        }
+
+        var linked: [NSRange] = []
+        InlineLink.linkPattern.enumerateMatches(in: storage.string, range: full) { match, _, _ in
+            guard let match, !skip(match.range.location) else { return }
+            linked.append(match.range)
+            let text = match.range(at: 1)
+            let address = string.substring(with: InlineLink.destinationRange(of: match))
+            guard text.length > 0, Self.isWebAddress(address) else { return }
+            storage.addAttribute(.webLink, value: address, range: text)
+        }
+        InlineLink.imagePattern.enumerateMatches(in: storage.string, range: full) { match, _, _ in
+            if let match { linked.append(match.range) }
+        }
+        Self.bareAddress.enumerateMatches(in: storage.string, range: full) { match, _, _ in
+            guard let match, !skip(match.range.location), !isCode(match.range.location),
+                  !linked.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { return }
+            var range = match.range
+            // Sentence punctuation after an address isn't part of it.
+            while range.length > 0, ".,;:!?)".utf16.contains(string.character(at: NSMaxRange(range) - 1)) {
+                range.length -= 1
+            }
+            storage.addAttributes(style.link, range: range)
+            storage.addAttribute(.webLink, value: string.substring(with: range), range: range)
+        }
+    }
+
+    /// A link to a note that doesn't exist: gray, dashed.
+    private var missingLink: [NSAttributedString.Key: Any] {
+        [.foregroundColor: MarkdownPalette.tertiary,
+         .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue,
+         .underlineColor: MarkdownPalette.linkUnderline]
+    }
+
+    private static let bareAddress = try! NSRegularExpression(
+        pattern: #"(?<![\w/(<])https?://[^\s<>\[\]()（）"'“”，。、；：！？]+"#)
+
+    static func isWebAddress(_ address: String) -> Bool {
+        let lowered = address.lowercased()
+        return lowered.hasPrefix("http://") || lowered.hasPrefix("https://") || lowered.hasPrefix("mailto:")
+    }
+
     /// Whether `rule` sets bold text in the bold color (`**…**`, `***…***`).
     private func isStrong(_ rule: WysiwygInlineRule) -> Bool {
         guard let color = rule.contentAttributes[.foregroundColor] as? NSColor else { return false }

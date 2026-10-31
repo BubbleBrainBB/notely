@@ -4,7 +4,10 @@ import Observation
 
 @Observable
 final class FileNoteStore {
-    var notes: [FileNote] = []
+    var notes: [FileNote] = [] {
+        // Links between notes show their titles (WikiLinkIndex).
+        didSet { WikiLinkIndex.shared.update(notes: notes.map { ($0.id, $0.url, $0.content) }, library: workspaceURL) }
+    }
     /// Images, videos and PDFs in the library, shown in the sidebar too.
     var files: [LibraryFile] = []
     var workspaceURL: URL?
@@ -107,16 +110,18 @@ final class FileNoteStore {
                         relativePath: relativePath(of: url))
     }
 
+    /// A new note titled `title`, in `folder` (the library's top when nil).
     @discardableResult
-    func createNote(title: String? = nil) -> FileNote? {
+    func createNote(title: String? = nil, in folder: URL? = nil) -> FileNote? {
         guard let workspaceURL else { return nil }
+        let folder = folder ?? workspaceURL
         let name = (title ?? "Untitled").sanitizeForFilename()
-        var url = workspaceURL.appendingPathComponent("\(name).md")
+        var url = folder.appendingPathComponent("\(name).md")
 
         // Avoid overwrite
         var counter = 2
         while FileManager.default.fileExists(atPath: url.path) {
-            url = workspaceURL.appendingPathComponent("\(name) \(counter).md")
+            url = folder.appendingPathComponent("\(name) \(counter).md")
             counter += 1
         }
 
