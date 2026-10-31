@@ -2,16 +2,14 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-/// Left column (design boards ㉔–㉕, ㉚): search, then the library — its name
-/// as the tree's heading that folds it, with folder options (…) and New
-/// Note (+) on that line —
-/// and Settings pinned to the bottom. No counts, no shortcut badges.
+/// Left column, two levels (design board 60 B). The first lists every
+/// library; the second is inside one: ‹ Libraries back to the first, the
+/// library's name with folder options (…) and New Note (+), Search, Memos,
+/// the notes tree — and Settings pinned to the bottom of both.
 struct SidebarView: View {
     @Environment(AppModel.self) var appModel
     @Environment(FileNoteStore.self) var store
     @State private var tree = NoteTreeState()
-    /// The whole library folded under its header (design board ㉚ C).
-    @AppStorage("notely.libraryCollapsed") private var libraryCollapsed = false
 
     /// Matches the trailing 8. (Was 22 while the hidden-title-bar window
     /// clipped ~14pt off the column's leading edge; the unified toolbar
@@ -28,7 +26,7 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        list
+        levels
         .frame(minWidth: 0, maxWidth: .infinity)
         // On the window ground, no divider: the editor's floating page is
         // what separates the two columns (design board ㉗ D).
@@ -56,10 +54,10 @@ struct SidebarView: View {
         .onChange(of: appModel.selectedNoteId, initial: true) { _, id in
             revealSelectedNote(id)
         }
-        // A note opened from elsewhere (search, New Note) unfolds the
-        // library so its row shows; a folded library stays folded at launch.
-        .onChange(of: appModel.selectedNoteId) { _, id in
-            if id != nil, libraryCollapsed { libraryCollapsed = false }
+        // Another library: its own folders, closed.
+        .onChange(of: store.workspaceURL) {
+            tree.expandedFolders = []
+            revealSelectedNote(appModel.selectedNoteId)
         }
         .environment(tree)
         .alert(tree.failedMove?.title ?? "", isPresented: Binding(
@@ -85,9 +83,35 @@ struct SidebarView: View {
         }
     }
 
+    /// The two levels side by side, the sidebar showing one: going into a
+    /// library pushes the list out to the left and the library's files in
+    /// from the right, like a step in iPhone Settings; going back reverses it.
+    private var levels: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let atLibraries = appModel.showsLibraries
+            HStack(spacing: 0) {
+                LibrariesLevel()
+                    .frame(width: width, height: geometry.size.height)
+                    .allowsHitTesting(atLibraries)
+                    .accessibilityHidden(!atLibraries)
+                list
+                    .frame(width: width, height: geometry.size.height)
+                    .allowsHitTesting(!atLibraries)
+                    .accessibilityHidden(atLibraries)
+            }
+            .offset(x: atLibraries ? 0 : -width)
+            .animation(.easeInOut(duration: 0.25), value: atLibraries)
+        }
+        .clipped()
+    }
+
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 1) {
+                LibrariesBackRow { appModel.showsLibraries = true }
+                LibraryHeader()
+                    .padding(.bottom, 4)
                 SidebarSearchField()
                 SidebarRow(icon: .glyph(.memo), title: "Memos", isSelected: appModel.showMemos) {
                     appModel.openMemos(inNewTab: NSEvent.modifierFlags.contains(.command))
@@ -95,8 +119,13 @@ struct SidebarView: View {
             }
             .padding(.leading, Self.leadingInset)
             .padding(.trailing, 8)
-            .padding(.top, 4)
-            .padding(.bottom, 10)
+            .padding(.top, 2)
+
+            Rectangle()
+                .fill(Color.borderColor)
+                .frame(height: 1)
+                .padding(.horizontal, Self.leadingInset + 8)
+                .padding(.vertical, 8)
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 1) {
@@ -117,29 +146,31 @@ struct SidebarView: View {
                 .padding(.trailing, 8)
                 .padding(.vertical, 8)
         }
+        // ⌘↑ and a two-finger swipe to the right go back to the libraries.
+        .background(LibraryBackGestures(isActive: !appModel.showsLibraries && appModel.isSidebarVisible) {
+            appModel.showsLibraries = true
+        })
     }
 
     // MARK: Notes tree
 
-    @ViewBuilder private var notesSection: some View {
+    private var notesSection: some View {
         let root = NoteTreeBuilder.build(from: sortedNotes, files: store.files)
-        LibraryHeader(isCollapsed: libraryCollapsed) {
-            withAnimation(.easeInOut(duration: 0.15)) { libraryCollapsed.toggle() }
+        return Group {
+            if !store.hasLoadedNotes {
+                // The first scan hasn't landed: not "No notes yet".
+                EmptyView()
+            } else if root.totalCount == 0 {
+                Text("No notes yet")
+                    .font(.notely(.caption))
+                    .foregroundColor(.tertiaryText)
+                    .padding(.leading, NoteTreeIndent.base)
+                    .frame(height: 28)
+            } else {
+                NoteFolderContents(folder: root, depth: 0)
+            }
         }
         .onChange(of: NoteTreeState.folderIds(in: root), initial: true) { _, ids in tree.folderIds = ids }
-
-        if libraryCollapsed || !store.hasLoadedNotes {
-            // Folded, or the first scan hasn't landed: not "No notes yet".
-            EmptyView()
-        } else if root.totalCount == 0 {
-            Text("No notes yet")
-                .font(.notely(.caption))
-                .foregroundColor(.tertiaryText)
-                .padding(.leading, NoteTreeIndent.base)
-                .frame(height: 28)
-        } else {
-            NoteFolderContents(folder: root, depth: 0)
-        }
     }
 
     /// Expands every folder on the way to the selected note so it is visible.
@@ -166,54 +197,50 @@ enum NoteSorting {
 
 // MARK: - Library heading and search
 
-/// The open folder's name, heading the notes tree. Clicking it folds the
-/// whole library; … opens the folder options (open another folder, new
-/// window, reveal, sort); + makes a new note.
+/// The open library's name, under ‹ Libraries: … opens the folder options
+/// (open another folder, new window, reveal, sort); + makes a new note.
+/// Notes dropped on it go to the library's top level.
 private struct LibraryHeader: View {
-    /// Whether the library's tree is folded away.
-    let isCollapsed: Bool
-    let toggle: () -> Void
     @Environment(FileNoteStore.self) var store
     @Environment(AppModel.self) var appModel
     @Environment(NoteTreeState.self) var tree
     @Environment(\.openWindow) private var openWindow
-    @State private var isHovering = false
     @State private var isHoveringMore = false
     @State private var isHoveringAdd = false
 
+    private var entry: LibraryEntry? {
+        LibraryList.shared.entry(for: store.workspaceURL)
+    }
+
     private var name: String {
-        store.workspaceURL?.lastPathComponent ?? "Notes"
+        entry?.displayName ?? store.workspaceURL?.lastPathComponent ?? "Notes"
     }
 
     var body: some View {
         HStack(spacing: 2) {
-            // The name folds and unfolds the library (design board ㉚). The
-            // icon stays the library icon — no disclosure arrow, on hover or
-            // folded; the tree showing or not is the state.
-            Button(action: toggle) {
-                HStack(spacing: NoteTreeIndent.iconGap) {
+            HStack(spacing: 9) {
+                // The same icon as the library's row on the first level.
+                if let entry {
+                    LibraryTile(entry: entry, size: 16)
+                } else {
                     ShiyeIcon(.library, size: NoteTreeIndent.icon)
                         .foregroundColor(.iconMuted)
-                        .frame(width: NoteTreeIndent.icon, height: NoteTreeIndent.icon)
-                    Text(name)
-                        .font(.notely(.body, weight: .medium))
-                        .foregroundColor(.primaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer(minLength: 0)
+                        .frame(width: 16, height: NoteTreeIndent.icon)
                 }
-                .padding(.leading, NoteTreeIndent.base)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                Text(name)
+                    .font(.notely(.body, weight: .semibold))
+                    .foregroundColor(.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
-            .help(isCollapsed ? "Show Notes" : "Hide Notes")
+            .padding(.leading, 10)
+            .frame(maxHeight: .infinity)
 
             Menu {
                 Button("Open Folder…") {
                     guard let url = NotesFolderPanel.choose() else { return }
-                    store.openWorkspace(at: url)
-                    appModel.openNote(nil)
+                    appModel.enterLibrary(url, store: store)
                 }
                 Button("Open in New Window") { openWindow(id: "main") }
                 if let url = store.workspaceURL {
@@ -259,14 +286,39 @@ private struct LibraryHeader: View {
             .onHover { isHoveringAdd = $0 }
         }
         .padding(.trailing, 4)
-        .frame(height: 28)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isHovering ? Color.cardHover : Color.clear)
-        )
+        .frame(height: 32)
         .dropHighlight(tree.dropTarget == "/")
-        .onHover { isHovering = $0 }
         .treeDropTarget("/")
+    }
+}
+
+/// "‹ Libraries", above the library's name: back to the first level.
+private struct LibrariesBackRow: View {
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(isHovering ? .secondaryText : .iconMuted)
+                Text("Libraries")
+                    .font(.notely(.caption))
+                    .foregroundColor(isHovering ? .secondaryText : .tertiaryText)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(isHovering ? Color.cardHover : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("Show Libraries (⌘↑)")
+        .padding(.leading, 2)
     }
 }
 
@@ -868,7 +920,7 @@ private extension View {
 
 // MARK: - Bottom: Settings
 
-private struct SidebarSettingsRow: View {
+struct SidebarSettingsRow: View {
     @Environment(AppModel.self) var appModel
 
     var body: some View {
