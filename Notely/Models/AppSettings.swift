@@ -21,6 +21,7 @@ enum AppSettings {
     static let spellCheckKey = "notely.spellCheck"
     static let autoPairKey = "notely.autoPair"
     static let smartPunctuationKey = "notely.smartPunctuation"
+    static let slashCommandsKey = "notely.slashCommands"
     static let markdownSyntaxKey = "notely.markdownSyntax"
     static let tabSizeKey = "notely.tabSize"
     static let wordWrapKey = "notely.wordWrap"
@@ -175,6 +176,14 @@ enum AppSettings {
     static var smartPunctuation: Bool {
         get { UserDefaults.standard.object(forKey: smartPunctuationKey) as? Bool ?? defaultSmartPunctuation }
         set { UserDefaults.standard.set(newValue, forKey: smartPunctuationKey) }
+    }
+
+    /// `/` at the start of a line opens the menu of blocks to insert.
+    static let defaultSlashCommands = true
+
+    static var slashCommands: Bool {
+        get { UserDefaults.standard.object(forKey: slashCommandsKey) as? Bool ?? defaultSlashCommands }
+        set { UserDefaults.standard.set(newValue, forKey: slashCommandsKey) }
     }
 
     /// When to reveal raw Markdown markers: "always", "focus", "hidden".

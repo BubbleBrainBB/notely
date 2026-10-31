@@ -489,10 +489,28 @@ final class WysiwygEngine {
             }
             seenContent = true
 
+            // A `> [!type]` callout: its first line is the title, the rest
+            // its body, in one tinted box.
+            if let group = quoteGroups[index], let type = group.calloutType {
+                if index == group.start {
+                    styleCalloutTitleLine(storage, line: line.text, lineRange: lineRange, type: type, isActive: isActive)
+                } else {
+                    styleQuoteLine(storage, line: line.text, lineRange: lineRange, enclosing: line.enclosing,
+                                   calloutIndent: Self.calloutTextIndent, isActive: isActive)
+                }
+                if index == group.end {
+                    let start = lines[group.start].range.location
+                    let blockRange = NSRange(location: start, length: NSMaxRange(lineRange) - start)
+                    storage.addAttribute(.calloutType, value: type, range: blockRange)
+                    spacedBlocks.append(blockRange)
+                }
+                continue
+            }
+
             // Blockquote (or, when it opens with an emoji, a gray callout).
             if let group = quoteGroups[index] {
                 styleQuoteLine(storage, line: line.text, lineRange: lineRange, enclosing: line.enclosing,
-                               asCallout: group.isEmoji, isActive: isActive)
+                               calloutIndent: group.isEmoji ? 14 : nil, isActive: isActive)
                 if group.isEmoji, index == group.end {
                     let start = lines[group.start].range.location
                     let blockRange = NSRange(location: start, length: NSMaxRange(lineRange) - start)
@@ -642,7 +660,14 @@ final class WysiwygEngine {
 
                 let (markers, contentRanges) = rule.analyze(match, styledString)
                 for contentRange in contentRanges {
+                    // Bold in a callout keeps the ink around it (body or
+                    // title): the accent reads poorly on a tinted box.
+                    let ink = isStrong(rule) && contentRange.location < storage.length
+                        && storage.attribute(.calloutType, at: contentRange.location, effectiveRange: nil) != nil
+                        ? storage.attribute(.foregroundColor, at: contentRange.location, effectiveRange: nil)
+                        : nil
                     storage.addAttributes(rule.contentAttributes, range: contentRange)
+                    if let ink { storage.addAttribute(.foregroundColor, value: ink, range: contentRange) }
                 }
 
                 // Reveal markers on the caret's span; collapse them elsewhere.
@@ -845,11 +870,13 @@ final class WysiwygEngine {
     }
 
     /// Consecutive `>` lines grouped into blocks. A block whose first line
-    /// opens with an emoji is drawn as a callout instead of a quote.
+    /// is `[!type]` (Obsidian / GitHub) is a callout of that type; one whose
+    /// first line opens with an emoji is drawn as a gray callout.
     struct QuoteGroup: Equatable {
         let start: Int
         let end: Int
         let isEmoji: Bool
+        var calloutType: String? = nil
     }
 
     static func quoteGroups(_ lines: [String]) -> [Int: QuoteGroup] {
@@ -859,12 +886,29 @@ final class WysiwygEngine {
             guard lines[i].trimmingCharacters(in: .whitespaces).hasPrefix(">") else { i += 1; continue }
             var j = i
             while j + 1 < lines.count, lines[j + 1].trimmingCharacters(in: .whitespaces).hasPrefix(">") { j += 1 }
-            let group = QuoteGroup(start: i, end: j, isEmoji: startsWithEmoji(quoteContent(of: lines[i])))
+            let first = quoteContent(of: lines[i])
+            let group = QuoteGroup(start: i, end: j, isEmoji: startsWithEmoji(first),
+                                   calloutType: calloutType(ofQuoteContent: first))
             for k in i...j { result[k] = group }
             i = j + 1
         }
         return result
     }
+
+    /// The type of a quote line that opens a callout: `note` for `[!note]`,
+    /// `[!note]-` or `[!note] Title`; nil for any other quote.
+    static func calloutType(ofQuoteContent content: String) -> String? {
+        let ns = content as NSString
+        guard let match = calloutTypePattern.firstMatch(in: content, range: NSRange(location: 0, length: ns.length))
+        else { return nil }
+        return ns.substring(with: match.range(at: 1))
+    }
+
+    private static let calloutTypePattern = try! NSRegularExpression(pattern: #"^\[!([^\]\s]+)\][+-]?(?:\s|$)"#)
+
+    /// A callout's opening line up to its title: the `>` markers, `[!type]`,
+    /// a fold sign and the spaces after. Group 1 is the type.
+    private static let calloutHeader = try! NSRegularExpression(pattern: #"^\s*(?:>\s*)+\[!([^\]\s]+)\][+-]?[ \t]*"#)
 
     /// A quote line's text after its `>` markers.
     static func quoteContent(of line: String) -> String {
@@ -881,15 +925,18 @@ final class WysiwygEngine {
 
     private static let quotePrefix = try! NSRegularExpression(pattern: #"^\s*((?:>\s?)+)"#)
 
+    /// A quote line, or with `calloutIndent` a callout's body line: in the
+    /// callout's body font, its text at that indent, no quote bar.
     private func styleQuoteLine(_ storage: NSTextStorage, line: String, lineRange: NSRange,
-                                enclosing: NSRange, asCallout: Bool, isActive: Bool) {
+                                enclosing: NSRange, calloutIndent: CGFloat?, isActive: Bool) {
         let nsLine = line as NSString
         guard let match = Self.quotePrefix.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return }
         let prefix = NSRange(location: lineRange.location, length: match.range.length)
         let depth = nsLine.substring(with: match.range(at: 1)).filter { $0 == ">" }.count
         let content = nsLine.substring(from: match.range.length)
 
-        let indent = asCallout ? 14 : Self.quoteIndent * CGFloat(depth)
+        let asCallout = calloutIndent != nil
+        let indent = calloutIndent ?? Self.quoteIndent * CGFloat(depth)
         let paragraph = asCallout
             ? Self.paragraph(indent: indent, tail: -14, lineHeight: calloutLineHeight)
             : Self.paragraph(indent: indent, lineHeight: style.lineHeight)
@@ -1265,6 +1312,12 @@ final class WysiwygEngine {
 
     /// Shrinks syntax characters to (almost) zero width and makes them clear,
     /// so the rendered text sits exactly where it would without them.
+    /// Whether `rule` sets bold text in the bold color (`**…**`, `***…***`).
+    private func isStrong(_ rule: WysiwygInlineRule) -> Bool {
+        guard let color = rule.contentAttributes[.foregroundColor] as? NSColor else { return false }
+        return color === style.bold[.foregroundColor] as? NSColor
+    }
+
     private func collapse(_ storage: NSTextStorage, _ range: NSRange) {
         guard range.length > 0, NSMaxRange(range) <= storage.length else { return }
         storage.addAttributes([
@@ -1303,6 +1356,38 @@ final class WysiwygEngine {
         } else {
             collapse(storage, marker)
         }
+    }
+
+    /// Styles a `> [!type] Title` callout's first line: the title in the
+    /// type color, the type's icon before it. `> [!type]` is hidden; with no
+    /// title the type word stays (invisibly) and its name is drawn over it,
+    /// capitalized. On the caret's line the syntax shows, faint.
+    private func styleCalloutTitleLine(_ storage: NSTextStorage, line: String, lineRange: NSRange, type: String,
+                                       isActive: Bool) {
+        let kind = CalloutKind(type)
+        storage.addAttributes([
+            .paragraphStyle: calloutParagraph(),
+            .foregroundColor: kind.color,
+            .font: style.calloutTitleFont,
+        ], range: lineRange)
+        storage.addAttribute(.calloutIcon, value: type, range: NSRange(location: lineRange.location, length: min(1, lineRange.length)))
+
+        let nsLine = line as NSString
+        guard let match = Self.calloutHeader.firstMatch(in: line, range: NSRange(location: 0, length: nsLine.length)) else { return }
+        let header = NSRange(location: lineRange.location + match.range.location, length: match.range.length)
+        if isActive {
+            storage.addAttribute(.foregroundColor, value: kind.color.withAlphaComponent(0.4), range: header)
+            return
+        }
+        let title = nsLine.substring(from: NSMaxRange(match.range)).trimmingCharacters(in: .whitespaces)
+        if !title.isEmpty {
+            collapse(storage, header)
+            return
+        }
+        let word = NSRange(location: lineRange.location + match.range(at: 1).location, length: match.range(at: 1).length)
+        collapse(storage, NSRange(location: header.location, length: word.location - header.location))
+        collapse(storage, NSRange(location: NSMaxRange(word), length: NSMaxRange(lineRange) - NSMaxRange(word)))
+        storage.addAttributes([.foregroundColor: NSColor.clear, .calloutTitle: CalloutKind.title(for: type)], range: word)
     }
 
     /// Adds breathing room above and below a block (code block / callout) by
