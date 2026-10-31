@@ -170,6 +170,10 @@ final class AppModel {
 
     var isSidebarVisible: Bool { columnVisibility != .detailOnly }
 
+    /// The sidebar's first level, every library, instead of this one's
+    /// files (design board 60 B). A window always opens inside its library.
+    var showsLibraries = false
+
     /// False while a library opened from the welcome page is handing over to
     /// the main window: the shell starts as one plain white sheet — like the
     /// welcome page — and `revealFrame()` animates it into the window ground

@@ -44,6 +44,7 @@ final class FileNoteStore {
         ImageLoader.shared.setWorkspaceURL(url)
         AppSettings.workspacePath = url.path
         AppSettings.noteRecentWorkspace(url.path)
+        LibraryList.shared.add(url)
         loadPinnedFiles()
         reloadNotes()
         startWatching()

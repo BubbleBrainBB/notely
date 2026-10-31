@@ -194,6 +194,21 @@ struct AppCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
             Divider()
+            // The sidebar's first level, and ⌃⌘1–9 straight into a library
+            // in the list's order (design board 60 B ④).
+            Button("Show Libraries") { appModel?.showLibraries() }
+                .disabled(store?.isOpen != true)
+            Menu("Go to Library") {
+                ForEach(Array(LibraryList.shared.entries.prefix(9).enumerated()), id: \.element.id) { index, entry in
+                    Button(entry.displayName) {
+                        guard let store, let appModel else { return }
+                        appModel.enterLibrary(entry.url, store: store)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.control, .command])
+                }
+            }
+            .disabled(appModel == nil)
+            Divider()
         }
 
         CommandMenu("Format") {
@@ -217,8 +232,7 @@ struct AppCommands: Commands {
     private func openFolderInFocusedWindow() {
         guard let url = NotesFolderPanel.choose() else { return }
         if let store, let appModel {
-            store.openWorkspace(at: url)
-            appModel.openNote(nil)
+            appModel.enterLibrary(url, store: store)
         } else {
             openWindow(id: "main")
         }
