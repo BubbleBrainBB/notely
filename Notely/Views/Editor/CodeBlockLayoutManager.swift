@@ -82,6 +82,10 @@ extension NSAttributedString.Key {
     /// On a callout's first character: the `CalloutKind` raw type whose icon is
     /// drawn in the callout's top-left corner.
     static let calloutIcon = NSAttributedString.Key("notely.calloutIcon")
+
+    /// On a hidden `[!type]` word: the title drawn in its place ("Note" for
+    /// `> [!note]`), for a callout that names no title of its own.
+    static let calloutTitle = NSAttributedString.Key("notely.calloutTitle")
 }
 
 /// What to draw in a list item's indent.
@@ -150,6 +154,7 @@ final class CodeBlockLayoutManager: NSLayoutManager {
         drawListMarkers(forGlyphRange: glyphsToShow, at: origin)
         drawRules(forGlyphRange: glyphsToShow, at: origin)
         drawCalloutIcons(forGlyphRange: glyphsToShow, at: origin)
+        drawCalloutTitles(forGlyphRange: glyphsToShow, at: origin)
         drawCodeLanguages(forGlyphRange: glyphsToShow, at: origin)
     }
 
@@ -222,22 +227,41 @@ final class CodeBlockLayoutManager: NSLayoutManager {
             let kind = CalloutKind(raw)
             let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
                 .applying(NSImage.SymbolConfiguration(paletteColors: [kind.color]))
-            guard let image = NSImage(systemSymbolName: kind.symbolName, accessibilityDescription: nil)?
+            guard let image = NSImage(systemSymbolName: CalloutKind.symbolName(for: raw), accessibilityDescription: nil)?
                 .withSymbolConfiguration(config) else { return }
-            // The tagged character is the collapsed `:::`, so center on the
-            // title font's cap height rather than that character's font: the
-            // line's last character is always title text.
+            // The tagged character is collapsed syntax (`:::`, `> [!`), so
+            // center on the title font's cap height: the line's largest font.
             let text = storage.string as NSString
             let line = text.paragraphRange(for: range)
-            var last = NSMaxRange(line) - 1
-            if last > line.location, text.character(at: last) == 0x0A { last -= 1 }
-            let font = storage.attribute(.font, at: last, effectiveRange: nil) as? NSFont
-                ?? NSFont.systemFont(ofSize: 14, weight: .semibold)
+            var font = NSFont.systemFont(ofSize: 14, weight: .semibold)
+            var largest: CGFloat = 0
+            storage.enumerateAttribute(.font, in: line) { value, _, _ in
+                if let lineFont = value as? NSFont, lineFont.pointSize > largest {
+                    largest = lineFont.pointSize
+                    font = lineFont
+                }
+            }
             let baseline = self.baselineY(forGlyphAt: gRange.location, origin: origin)
             let centerY = baseline - font.capHeight / 2
             let size = image.size
             image.draw(in: NSRect(x: origin.x + 14 + (16 - size.width) / 2, y: centerY - size.height / 2,
                                   width: size.width, height: size.height))
+        }
+    }
+
+    /// The title of a callout that names none, drawn over its hidden type
+    /// word in the title's font and the callout's color.
+    private func drawCalloutTitles(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        guard let storage = textStorage else { return }
+        enumerate(.calloutTitle, in: glyphsToShow) { value, range, gRange in
+            guard let title = value as? String, gRange.length > 0,
+                  let font = storage.attribute(.font, at: range.location, effectiveRange: nil) as? NSFont else { return }
+            let type = storage.attribute(.calloutType, at: range.location, effectiveRange: nil) as? String ?? "note"
+            let fragment = lineFragmentRect(forGlyphAt: gRange.location, effectiveRange: nil)
+            let x = origin.x + fragment.minX + location(forGlyphAt: gRange.location).x
+            let baseline = baselineY(forGlyphAt: gRange.location, origin: origin)
+            (title as NSString).draw(at: NSPoint(x: x, y: baseline - font.ascender),
+                                     withAttributes: [.font: font, .foregroundColor: CalloutKind(type).color])
         }
     }
 
